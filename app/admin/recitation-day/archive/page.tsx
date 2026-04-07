@@ -178,15 +178,15 @@ export default function RecitationDayArchivePage() {
       <Header />
       <main className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 lg:px-6">
         <Card className="rounded-[30px] border-[#dde6f0] bg-white shadow-[0_16px_45px_rgba(15,23,42,0.06)]">
-          <CardContent className="flex flex-col gap-4 px-5 py-6 text-right sm:flex-row sm:items-center sm:justify-between md:px-6">
-            <div>
-              <div className="flex items-center justify-start gap-2 text-2xl font-black text-[#1a2332]"><Archive className="h-6 w-6 text-[#3453a7]" />أرشيف السرد</div>
-              <div className="mt-2 text-sm text-[#64748b]">عرض السرد المؤرشف حسب الحلقة والتاريخ.</div>
+          <CardContent className="px-5 py-6 text-right md:px-6">
+            <div className="flex justify-start">
+              <Link href="/admin/recitation-day" className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#d8e4fb] text-[#3453a7] transition hover:bg-[#f5f8ff]" aria-label="العودة">
+                <ArrowRight className="h-5 w-5" />
+              </Link>
             </div>
-            <Link href="/admin/recitation-day" className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[#d8e4fb] px-6 text-sm font-black text-[#3453a7] transition hover:bg-[#f5f8ff]">
-              <ArrowRight className="h-4 w-4" />
-              العودة
-            </Link>
+            <div className="mt-5 flex items-center justify-start gap-2 text-2xl font-black text-[#1a2332]">
+              <Archive className="h-6 w-6 text-[#3453a7]" />أرشيف السرد
+            </div>
           </CardContent>
         </Card>
 
@@ -221,10 +221,7 @@ export default function RecitationDayArchivePage() {
           </Card>
 
           <Card className="rounded-[30px] border-[#dde6f0] bg-white shadow-[0_16px_45px_rgba(15,23,42,0.06)]">
-            <CardHeader className="text-right">
-              <CardTitle className="text-xl font-black text-[#1a2332]">{selectedArchiveDay ? `${getArchiveHalaqahLabel(selectedArchiveDay.halaqah)} - ${selectedArchiveLabel}` : "اختر حلقة من الأرشيف"}</CardTitle>
-            </CardHeader>
-            <CardContent>
+            <CardContent className="pt-6">
               {isArchiveLoading ? (
                 <div className="flex items-center justify-center py-16"><SiteLoader size="sm" color="#3453a7" /></div>
               ) : selectedArchiveDay ? (
@@ -257,7 +254,7 @@ export default function RecitationDayArchivePage() {
                   </Table>
                 </div>
               ) : (
-                <div className="rounded-2xl border border-dashed border-[#d8e4fb] px-4 py-10 text-center text-sm text-[#64748b]">اختر حلقة من الأرشيف لعرض التفاصيل</div>
+                <div className="rounded-2xl border border-dashed border-[#d8e4fb] px-4 py-10 text-center text-sm text-[#64748b]">لا توجد بيانات لعرضها</div>
               )}
             </CardContent>
           </Card>
