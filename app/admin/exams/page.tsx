@@ -882,25 +882,25 @@ export default function AdminExamsPage() {
             </div>
           ) : null}
 
-          <div className="flex flex-wrap items-center justify-start gap-3">
+          <div className="flex flex-col items-stretch justify-start gap-3 sm:flex-row sm:flex-wrap sm:items-center">
             {form.studentId ? (
               <Button
                 type="button"
                 onClick={() => handleOpenScheduleDialog()}
                 disabled={tableMissing || !selectedStudent || availableJuzs.length === 0}
-                className="h-11 rounded-2xl bg-[#3453a7] px-6 text-sm font-black text-white hover:bg-[#274187] disabled:bg-[#3453a7] disabled:opacity-60"
+                className="h-11 w-full rounded-2xl bg-[#3453a7] px-6 text-sm font-black text-white hover:bg-[#274187] disabled:bg-[#3453a7] disabled:opacity-60 sm:w-auto"
               >
                 <BellRing className="me-2 h-4 w-4" />
                 جدولة الاختبارات
               </Button>
             ) : null}
 
-            <Button type="button" onClick={() => setIsSchedulesOverviewOpen(true)} className="h-11 rounded-2xl bg-[#3453a7] px-6 text-sm font-black text-white hover:bg-[#274187]">
+            <Button type="button" onClick={() => setIsSchedulesOverviewOpen(true)} className="h-11 w-full rounded-2xl bg-[#3453a7] px-6 text-sm font-black text-white hover:bg-[#274187] sm:w-auto">
               <CalendarDays className="me-2 h-4 w-4" />
               المواعيد
             </Button>
 
-            <Button type="button" onClick={() => setIsSettingsOpen(true)} className="h-11 rounded-2xl bg-[#3453a7] px-6 text-sm font-black text-white hover:bg-[#274187]">
+            <Button type="button" onClick={() => setIsSettingsOpen(true)} className="h-11 w-full rounded-2xl bg-[#3453a7] px-6 text-sm font-black text-white hover:bg-[#274187] sm:w-auto">
               <SlidersHorizontal className="me-2 h-4 w-4" />
               إعدادات الاختبارات
             </Button>
@@ -908,8 +908,8 @@ export default function AdminExamsPage() {
 
           <div className="rounded-[28px] border border-[#dbe5f1] bg-white p-4 shadow-[0_16px_40px_rgba(15,23,42,0.04)]">
             <div className="text-right">
-              <div className="inline-flex max-w-full flex-col gap-4 md:flex-row md:items-end">
-                <div className="w-[220px] max-w-full space-y-2 text-right">
+              <div className="flex max-w-full flex-col gap-4 md:flex-row md:items-end">
+                <div className="w-full min-w-0 space-y-2 text-right md:w-[220px]">
                   <Label className="text-sm font-black text-[#334155]">الحلقة</Label>
                   <Select value={selectedCircle} onValueChange={setSelectedCircle} dir="rtl">
                     <SelectTrigger className="h-12 rounded-2xl border-[#d7e3f2] bg-white px-4 shadow-sm">
@@ -923,7 +923,7 @@ export default function AdminExamsPage() {
                   </Select>
                 </div>
 
-                <div className="w-[320px] max-w-full space-y-2 text-right">
+                <div className="w-full min-w-0 space-y-2 text-right md:w-[320px]">
                   <Label className="text-sm font-black text-[#334155]">الطالب</Label>
                   <Select
                     value={form.studentId || undefined}
@@ -975,7 +975,7 @@ export default function AdminExamsPage() {
 
               <CardContent>
                 <div className="grid gap-4 lg:grid-cols-[minmax(0,1.65fr)_minmax(180px,1fr)_minmax(150px,0.75fr)_minmax(150px,0.75fr)_auto] lg:items-end">
-                  <div className="space-y-2 text-right">
+                  <div className="min-w-0 space-y-2 text-right">
                     <Label className="text-sm font-black text-[#334155]">{portionUnitLabel} المراد اختباره</Label>
                     <Select key={form.studentId || "no-student"} value={form.selectedJuz || undefined} onValueChange={(value) => setForm((current) => ({ ...current, selectedJuz: value }))} dir="rtl">
                       <SelectTrigger className="h-11 rounded-2xl border-[#d7e3f2] bg-white">
@@ -992,16 +992,16 @@ export default function AdminExamsPage() {
                     ) : null}
                   </div>
 
-                  <div className="space-y-2 text-right">
+                  <div className="min-w-0 space-y-2 text-right">
                     <Label className="text-sm font-black text-[#334155]">اسم المختبر</Label>
                     <Input value={form.testedByName} onChange={(event) => setForm((current) => ({ ...current, testedByName: event.target.value }))} placeholder="اكتب اسم المختبر" className="h-11 rounded-2xl border-[#d7e3f2] bg-white text-base font-bold" />
                   </div>
 
-                  <div className="space-y-2 text-right">
+                  <div className="min-w-0 space-y-2 text-right">
                     <Label className="text-sm font-black text-[#334155]">عدد التنبيهات</Label>
                     <Input type="number" min="0" value={form.alertsCount} onChange={(event) => setForm((current) => ({ ...current, alertsCount: event.target.value }))} className="h-11 rounded-2xl border-[#d7e3f2] bg-white text-base font-bold" />
                   </div>
-                  <div className="space-y-2 text-right">
+                  <div className="min-w-0 space-y-2 text-right">
                     <Label className="text-sm font-black text-[#334155]">عدد الأخطاء</Label>
                     <Input type="number" min="0" value={form.mistakesCount} onChange={(event) => setForm((current) => ({ ...current, mistakesCount: event.target.value }))} className="h-11 rounded-2xl border-[#d7e3f2] bg-white text-base font-bold" />
                   </div>
@@ -1023,8 +1023,8 @@ export default function AdminExamsPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="overflow-hidden rounded-[24px] border border-[#ebeff5]">
-                  <Table>
+                <div className="overflow-x-auto rounded-[24px] border border-[#ebeff5]">
+                  <Table className="min-w-[760px]">
                     <TableHeader>
                       <TableRow className="bg-[#f8fafc] hover:bg-[#f8fafc]">
                         <TableHead className="text-right font-black text-[#475569]">الطالب</TableHead>
@@ -1070,21 +1070,21 @@ export default function AdminExamsPage() {
           )}
 
           <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-            <DialogContent className="max-w-4xl rounded-[28px] border border-[#dbe5f1] bg-white p-0 shadow-[0_24px_70px_rgba(15,23,42,0.14)]" showCloseButton={false}>
-              <div className="overflow-hidden rounded-[28px] bg-white">
+            <DialogContent className="top-3 max-h-[calc(100dvh-1.5rem)] w-[calc(100vw-24px)] max-w-4xl translate-y-0 overflow-hidden rounded-[28px] border border-[#dbe5f1] bg-white p-0 shadow-[0_24px_70px_rgba(15,23,42,0.14)] sm:top-[50%] sm:w-full sm:translate-y-[-50%]" showCloseButton={false}>
+              <div className="flex max-h-[calc(100dvh-1.5rem)] flex-col overflow-hidden rounded-[28px] bg-white sm:max-h-[90vh]">
                 <DialogHeader className="border-b border-[#e5edf6] px-6 py-5">
-                  <div className="flex w-full items-center justify-between gap-4">
+                  <div className="flex w-full flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center sm:gap-4">
                     <DialogTitle className="flex items-center justify-start gap-2 text-left text-2xl font-black text-[#1a2332]">
                       <SlidersHorizontal className="h-5 w-5 text-[#3453a7]" />
                       إعدادات الاختبارات
                     </DialogTitle>
-                    <Button type="button" variant="outline" onClick={() => setIsTemplatesDialogOpen(true)} className="h-10 rounded-2xl border-[#d7e3f2] bg-white px-4 text-sm font-black text-[#3453a7] hover:bg-[#f8fbff]">
+                    <Button type="button" variant="outline" onClick={() => setIsTemplatesDialogOpen(true)} className="h-10 w-full rounded-2xl border-[#d7e3f2] bg-white px-4 text-sm font-black text-[#3453a7] hover:bg-[#f8fbff] sm:w-auto">
                       القوالب
                     </Button>
                   </div>
                 </DialogHeader>
 
-                <div className="grid gap-5 px-6 py-6 sm:grid-cols-2">
+                <div className="grid gap-5 overflow-y-auto px-4 py-5 sm:grid-cols-2 sm:px-6 sm:py-6">
                   <div className="space-y-2 text-right">
                     <Label className="text-sm font-black text-[#334155]">وحدة الاختبار</Label>
                     <Select value={settingsForm.portionMode} onValueChange={handlePortionModeChange} dir="rtl">
@@ -1115,11 +1115,11 @@ export default function AdminExamsPage() {
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-3 border-t border-[#e5edf6] px-6 py-4">
-                  <Button type="button" variant="outline" onClick={() => setIsSettingsOpen(false)} className="h-11 rounded-2xl border-[#d7e3f2] bg-white px-5 text-sm font-black text-[#1a2332] hover:bg-[#f8fbff]">
+                <div className="flex flex-col-reverse justify-end gap-3 border-t border-[#e5edf6] px-4 py-4 sm:flex-row sm:px-6">
+                  <Button type="button" variant="outline" onClick={() => setIsSettingsOpen(false)} className="h-11 w-full rounded-2xl border-[#d7e3f2] bg-white px-5 text-sm font-black text-[#1a2332] hover:bg-[#f8fbff] sm:w-auto">
                     إغلاق
                   </Button>
-                  <Button type="button" onClick={handleSaveSettings} disabled={isSavingSettings} className="h-11 rounded-2xl bg-[#3453a7] px-6 text-sm font-black text-white hover:bg-[#274187] disabled:bg-[#3453a7]">
+                  <Button type="button" onClick={handleSaveSettings} disabled={isSavingSettings} className="h-11 w-full rounded-2xl bg-[#3453a7] px-6 text-sm font-black text-white hover:bg-[#274187] disabled:bg-[#3453a7] sm:w-auto">
                     <Save className="me-2 h-4 w-4" />
                     {isSavingSettings ? "جاري الحفظ..." : "حفظ الإعدادات"}
                   </Button>
@@ -1129,8 +1129,8 @@ export default function AdminExamsPage() {
           </Dialog>
 
           <Dialog open={isTemplatesDialogOpen} onOpenChange={setIsTemplatesDialogOpen}>
-            <DialogContent className="max-w-4xl rounded-[28px] border border-[#dbe5f1] bg-white p-0 shadow-[0_24px_70px_rgba(15,23,42,0.14)]" showCloseButton={false}>
-              <div className="overflow-hidden rounded-[28px] bg-white">
+            <DialogContent className="top-3 max-h-[calc(100dvh-1.5rem)] w-[calc(100vw-24px)] max-w-4xl translate-y-0 overflow-hidden rounded-[28px] border border-[#dbe5f1] bg-white p-0 shadow-[0_24px_70px_rgba(15,23,42,0.14)] sm:top-[50%] sm:w-full sm:translate-y-[-50%]" showCloseButton={false}>
+              <div className="flex max-h-[calc(100dvh-1.5rem)] flex-col overflow-hidden rounded-[28px] bg-white sm:max-h-[90vh]">
                 <DialogHeader className="border-b border-[#e5edf6] px-6 py-5">
                   <DialogTitle className="flex w-full items-center justify-start gap-2 text-left text-2xl font-black text-[#1a2332]">
                     <BellRing className="h-5 w-5 text-[#3453a7]" />
@@ -1138,7 +1138,7 @@ export default function AdminExamsPage() {
                   </DialogTitle>
                 </DialogHeader>
 
-                <div className="px-6 py-6">
+                <div className="overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
                   <div className="mb-4 space-y-1 text-right">
                     <div className="flex items-center justify-start gap-2">
                       <h3 className="text-base font-black text-[#1a2332]">قوالب التنبيه والرسائل</h3>
@@ -1172,11 +1172,11 @@ export default function AdminExamsPage() {
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-3 border-t border-[#e5edf6] px-6 py-4">
-                  <Button type="button" variant="outline" onClick={() => setIsTemplatesDialogOpen(false)} className="h-11 rounded-2xl border-[#d7e3f2] bg-white px-5 text-sm font-black text-[#1a2332] hover:bg-[#f8fbff]">
+                <div className="flex flex-col-reverse justify-end gap-3 border-t border-[#e5edf6] px-4 py-4 sm:flex-row sm:px-6">
+                  <Button type="button" variant="outline" onClick={() => setIsTemplatesDialogOpen(false)} className="h-11 w-full rounded-2xl border-[#d7e3f2] bg-white px-5 text-sm font-black text-[#1a2332] hover:bg-[#f8fbff] sm:w-auto">
                     إغلاق
                   </Button>
-                  <Button type="button" onClick={handleSaveTemplates} disabled={isSavingTemplates} className="h-11 rounded-2xl bg-[#3453a7] px-6 text-sm font-black text-white hover:bg-[#274187] disabled:bg-[#3453a7]">
+                  <Button type="button" onClick={handleSaveTemplates} disabled={isSavingTemplates} className="h-11 w-full rounded-2xl bg-[#3453a7] px-6 text-sm font-black text-white hover:bg-[#274187] disabled:bg-[#3453a7] sm:w-auto">
                     <Save className="me-2 h-4 w-4" />
                     {isSavingTemplates ? "جاري الحفظ..." : "حفظ القوالب"}
                   </Button>
@@ -1186,8 +1186,8 @@ export default function AdminExamsPage() {
           </Dialog>
 
           <Dialog open={isSchedulesOverviewOpen} onOpenChange={setIsSchedulesOverviewOpen}>
-            <DialogContent className="max-h-[90vh] w-[calc(100vw-24px)] max-w-4xl rounded-[28px] border border-[#dbe5f1] bg-white p-0 shadow-[0_24px_70px_rgba(15,23,42,0.14)] sm:w-full" showCloseButton={false}>
-              <div className="overflow-hidden rounded-[28px] bg-white">
+            <DialogContent className="top-3 max-h-[calc(100dvh-1.5rem)] w-[calc(100vw-24px)] max-w-4xl translate-y-0 overflow-hidden rounded-[28px] border border-[#dbe5f1] bg-white p-0 shadow-[0_24px_70px_rgba(15,23,42,0.14)] sm:top-[50%] sm:max-h-[90vh] sm:w-full sm:translate-y-[-50%]" showCloseButton={false}>
+              <div className="flex max-h-[calc(100dvh-1.5rem)] flex-col overflow-hidden rounded-[28px] bg-white sm:max-h-[90vh]">
                 <DialogHeader className="border-b border-[#e5edf6] px-4 py-4 sm:px-6 sm:py-5">
                   <DialogTitle className="flex w-full items-center justify-start gap-2 text-left text-2xl font-black text-[#1a2332]">
                     <CalendarDays className="h-5 w-5 text-[#3453a7]" />
@@ -1291,8 +1291,8 @@ export default function AdminExamsPage() {
           </Dialog>
 
           <Dialog open={isScheduleDialogOpen} onOpenChange={setIsScheduleDialogOpen}>
-            <DialogContent className="max-w-xl rounded-[28px] border border-[#dbe5f1] bg-white p-0 shadow-[0_24px_70px_rgba(15,23,42,0.14)]" showCloseButton={false}>
-              <div className="overflow-hidden rounded-[28px] bg-white">
+            <DialogContent className="top-3 max-h-[calc(100dvh-1.5rem)] w-[calc(100vw-24px)] max-w-xl translate-y-0 overflow-hidden rounded-[28px] border border-[#dbe5f1] bg-white p-0 shadow-[0_24px_70px_rgba(15,23,42,0.14)] sm:top-[50%] sm:w-full sm:translate-y-[-50%]" showCloseButton={false}>
+              <div className="flex max-h-[calc(100dvh-1.5rem)] flex-col overflow-hidden rounded-[28px] bg-white">
                 <DialogHeader className="border-b border-[#e5edf6] px-6 py-5">
                   <DialogTitle className="flex w-full items-center justify-start gap-2 text-left text-2xl font-black text-[#1a2332]">
                     <BellRing className="h-5 w-5 text-[#3453a7]" />
@@ -1300,7 +1300,7 @@ export default function AdminExamsPage() {
                   </DialogTitle>
                 </DialogHeader>
 
-                <div className="grid gap-5 px-6 py-6">
+                <div className="grid gap-5 overflow-y-auto px-6 py-6">
                   <div className="space-y-2 text-right">
                     <Label className="text-sm font-black text-[#334155]">{portionUnitLabel}</Label>
                     <Select value={scheduleForm.juzNumber || undefined} onValueChange={(value) => setScheduleForm((current) => ({ ...current, juzNumber: value }))} dir="rtl">

@@ -1065,7 +1065,7 @@ export function Header() {
                     )}
                   </button>
                 </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" sideOffset={8} className="w-[320px] p-0 overflow-hidden rounded-xl shadow-2xl border border-gray-200">
+              <DropdownMenuContent align="end" sideOffset={8} className="w-[min(320px,calc(100vw-16px))] max-w-[calc(100vw-16px)] p-0 overflow-hidden rounded-xl shadow-2xl border border-gray-200">
                 <div dir="rtl" className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100">
                   <div className="flex items-center gap-2">
                     <div className="w-6 h-6 rounded-full bg-[#3453a7]/15 flex items-center justify-center">
@@ -1260,7 +1260,7 @@ export function Header() {
                         )}
                       </button>
                     </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" sideOffset={8} className="w-[320px] p-0 overflow-hidden rounded-xl shadow-2xl border border-gray-200">
+                  <DropdownMenuContent align="end" sideOffset={8} className="w-[min(320px,calc(100vw-16px))] max-w-[calc(100vw-16px)] p-0 overflow-hidden rounded-xl shadow-2xl border border-gray-200">
                     <div dir="rtl" className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100">
                       <div className="flex items-center gap-2">
                         <div className="w-6 h-6 rounded-full bg-[#3453a7]/15 flex items-center justify-center">
@@ -1348,7 +1348,7 @@ export function Header() {
 
       <div
         dir="rtl"
-        className={`fixed top-0 right-0 h-full w-[300px] bg-[#f9fafb] z-[90] flex flex-col shadow-2xl transition-transform duration-300 ease-in-out ${isMobileMenuOpen ? "translate-x-0" : "translate-x-full"}`}
+        className={`fixed top-0 right-0 h-full w-[min(300px,calc(100vw-56px))] max-w-[calc(100vw-56px)] bg-[#f9fafb] z-[90] flex flex-col shadow-2xl transition-transform duration-300 ease-in-out ${isMobileMenuOpen ? "translate-x-0" : "translate-x-full"}`}
       >
         {/* رأس الدرج */}
 

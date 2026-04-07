@@ -825,7 +825,8 @@ export default function FinancePage() {
                 />
               </CardHeader>
               <CardContent className="pt-5">
-                <Table>
+                <div className="overflow-x-auto">
+                <Table className="min-w-[760px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="text-right">الفاتورة</TableHead>
@@ -869,6 +870,7 @@ export default function FinancePage() {
                     )}
                   </TableBody>
                 </Table>
+                </div>
               </CardContent>
             </Card>
           )}
@@ -885,7 +887,8 @@ export default function FinancePage() {
                 />
               </CardHeader>
               <CardContent className="pt-5">
-                <Table>
+                <div className="overflow-x-auto">
+                <Table className="min-w-[640px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="text-right">الوصف</TableHead>
@@ -925,6 +928,7 @@ export default function FinancePage() {
                     )}
                   </TableBody>
                 </Table>
+                </div>
               </CardContent>
             </Card>
           )}
@@ -941,7 +945,8 @@ export default function FinancePage() {
                 />
               </CardHeader>
               <CardContent className="pt-5">
-                <Table>
+                <div className="overflow-x-auto">
+                <Table className="min-w-[560px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="text-right">الوصف</TableHead>
@@ -979,6 +984,7 @@ export default function FinancePage() {
                     )}
                   </TableBody>
                 </Table>
+                </div>
               </CardContent>
             </Card>
           )}

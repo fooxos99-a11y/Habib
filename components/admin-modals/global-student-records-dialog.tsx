@@ -183,7 +183,7 @@ export function GlobalStudentRecordsDialog() {
                     لا توجد سجلات سابقة لهذا الطالب
                   </div>
                 ) : (
-                  <table className="w-fit min-w-full mx-auto table-auto text-right text-sm">
+                  <table className="mx-auto w-full min-w-[640px] table-auto text-right text-sm">
                     <thead className="bg-white text-[#1a2332] sticky top-0 backdrop-blur-sm shadow-[0_1px_2px_rgba(0,0,0,0.05)] border-b border-[#3453a7]/20">
                       <tr>
                         <th className="px-3 py-2 font-medium whitespace-nowrap">التاريخ</th>

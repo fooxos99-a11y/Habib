@@ -674,8 +674,8 @@ export default function EnrollmentRequestsPage() {
 								<p className="mt-2 text-sm text-neutral-500">عند وصول طلبات جديدة ستظهر هنا تلقائيًا.</p>
 							</div>
 						) : (
-							<div className="overflow-x-auto">
-								<table className="w-full min-w-[980px] text-right">
+              <div className="overflow-x-auto [scrollbar-width:thin]">
+                <table className="w-full min-w-[760px] text-right">
                   <thead className="bg-white text-[#20335f]">
 										<tr>
 											<th className="px-6 py-4 font-semibold">الاسم الثلاثي</th>

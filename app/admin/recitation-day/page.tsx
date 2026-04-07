@@ -810,15 +810,15 @@ export default function AdminRecitationDayPage() {
           <CardContent>
             {!currentDay ? (
               <div className="grid gap-4 md:grid-cols-[minmax(0,220px)_minmax(0,220px)_auto] md:items-end md:justify-between">
-                <div className="space-y-2 text-right">
+                <div className="min-w-0 space-y-2 text-right">
                   <div className="text-sm font-bold text-[#1a2332]">من</div>
-                  <Input type="date" value={recitationStartDate} max={recitationEndDate || undefined} onChange={(event) => setRecitationStartDate(event.target.value)} className="border-[#d8e4fb]" />
+                  <Input type="date" value={recitationStartDate} max={recitationEndDate || undefined} onChange={(event) => setRecitationStartDate(event.target.value)} className="w-full min-w-0 border-[#d8e4fb] text-sm sm:text-base" />
                 </div>
-                <div className="space-y-2 text-right">
+                <div className="min-w-0 space-y-2 text-right">
                   <div className="text-sm font-bold text-[#1a2332]">إلى</div>
-                  <Input type="date" value={recitationEndDate} min={recitationStartDate || undefined} onChange={(event) => setRecitationEndDate(event.target.value)} className="border-[#d8e4fb]" />
+                  <Input type="date" value={recitationEndDate} min={recitationStartDate || undefined} onChange={(event) => setRecitationEndDate(event.target.value)} className="w-full min-w-0 border-[#d8e4fb] text-sm sm:text-base" />
                 </div>
-                <Button onClick={() => setIsStartDialogOpen(true)} disabled={!recitationStartDate || !recitationEndDate} className="h-11 rounded-full bg-[#3453a7] px-6 text-white hover:bg-[#28448e]"><PlayCircle className="me-2 h-4 w-4" />بدء يوم السرد</Button>
+                <Button onClick={() => setIsStartDialogOpen(true)} disabled={!recitationStartDate || !recitationEndDate} className="h-11 w-full rounded-full bg-[#3453a7] px-6 text-white hover:bg-[#28448e] md:w-auto"><PlayCircle className="me-2 h-4 w-4" />بدء يوم السرد</Button>
               </div>
             ) : (
               <div className="space-y-5">
