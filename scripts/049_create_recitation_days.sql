@@ -1,6 +1,8 @@
 CREATE TABLE IF NOT EXISTS public.recitation_days (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   recitation_date date NOT NULL,
+  recitation_end_date date NULL,
+  halaqah text NULL,
   status text NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'archived')),
   created_by uuid NULL,
   created_by_name text NULL,
@@ -17,6 +19,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS recitation_days_open_unique_idx
 
 CREATE INDEX IF NOT EXISTS recitation_days_recitation_date_idx
   ON public.recitation_days(recitation_date DESC);
+
+CREATE INDEX IF NOT EXISTS recitation_days_recitation_end_date_idx
+  ON public.recitation_days(recitation_end_date DESC);
+
+CREATE INDEX IF NOT EXISTS recitation_days_halaqah_idx
+  ON public.recitation_days(halaqah);
 
 CREATE TABLE IF NOT EXISTS public.recitation_day_students (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

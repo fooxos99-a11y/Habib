@@ -1,8 +1,18 @@
+import { SURAHS } from "./quran-data"
+
 export type EnrollmentJuzTestStatus = "pass" | "fail" | "review"
 export type EnrollmentJuzReviewStatus = "pass" | "fail" | "needs_mastery"
+export type EnrollmentPartialJuzRange = {
+  juzNumber: number
+  fromSurahNumber: number
+  fromVerseNumber: number
+  toSurahNumber: number
+  toVerseNumber: number
+}
 
 const TEST_STATUSES = ["pass", "fail", "review"] as const
 const REVIEW_STATUSES = ["pass", "fail", "needs_mastery"] as const
+const PARTIAL_JUZS_PREFIX = "partial_juzs:"
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -18,6 +28,80 @@ function normalizeStatusMap<T extends string>(value: unknown, allowed: readonly 
     }
     return accumulator
   }, {})
+}
+
+function getSurahName(surahNumber: number) {
+  return SURAHS.find((surah) => surah.number === surahNumber)?.name || `سورة ${surahNumber}`
+}
+
+function normalizePartialJuzRange(value: unknown): EnrollmentPartialJuzRange | null {
+  if (!isObjectRecord(value)) return null
+
+  const juzNumber = Number.parseInt(String(value.juzNumber), 10)
+  const fromSurahNumber = Number.parseInt(String(value.fromSurahNumber), 10)
+  const fromVerseNumber = Number.parseInt(String(value.fromVerseNumber), 10)
+  const toSurahNumber = Number.parseInt(String(value.toSurahNumber), 10)
+  const toVerseNumber = Number.parseInt(String(value.toVerseNumber), 10)
+
+  if (
+    !Number.isInteger(juzNumber)
+    || juzNumber < 1
+    || juzNumber > 30
+    || !Number.isInteger(fromSurahNumber)
+    || !Number.isInteger(fromVerseNumber)
+    || !Number.isInteger(toSurahNumber)
+    || !Number.isInteger(toVerseNumber)
+  ) {
+    return null
+  }
+
+  return {
+    juzNumber,
+    fromSurahNumber,
+    fromVerseNumber,
+    toSurahNumber,
+    toVerseNumber,
+  }
+}
+
+export function parseEnrollmentPartialJuzRanges(value?: string | null) {
+  if (!value || !value.startsWith(PARTIAL_JUZS_PREFIX)) {
+    return [] as EnrollmentPartialJuzRange[]
+  }
+
+  try {
+    const parsed = JSON.parse(value.slice(PARTIAL_JUZS_PREFIX.length))
+    if (!Array.isArray(parsed)) {
+      return []
+    }
+
+    return parsed
+      .map((item) => normalizePartialJuzRange(item))
+      .filter((item): item is EnrollmentPartialJuzRange => Boolean(item))
+      .sort((left, right) => left.juzNumber - right.juzNumber)
+  } catch {
+    return []
+  }
+}
+
+export function serializeEnrollmentPartialJuzRanges(
+  value?: EnrollmentPartialJuzRange[] | Record<number, EnrollmentPartialJuzRange> | null,
+) {
+  const ranges = Array.isArray(value) ? value : Object.values(value || {})
+  const normalizedRanges = ranges
+    .map((item) => normalizePartialJuzRange(item))
+    .filter((item): item is EnrollmentPartialJuzRange => Boolean(item))
+    .sort((left, right) => left.juzNumber - right.juzNumber)
+
+  if (normalizedRanges.length === 0) {
+    return ""
+  }
+
+  return `${PARTIAL_JUZS_PREFIX}${JSON.stringify(normalizedRanges)}`
+}
+
+function formatPartialJuzRange(range: EnrollmentPartialJuzRange) {
+  return `الجزء ${range.juzNumber} (${getSurahName(range.fromSurahNumber)} ${range.fromVerseNumber} إلى ${getSurahName(range.toSurahNumber)} ${range.toVerseNumber})`
 }
 
 export function normalizeEnrollmentTestResults(value: unknown) {
@@ -161,7 +245,19 @@ export function getNeedsMasteryJuzNumbers(
 
 export function formatEnrollmentMemorizedAmount(amount?: string | null, selectedJuzs?: number[] | null) {
   const normalizedSelectedJuzs = normalizeSelectedJuzs(selectedJuzs)
+  const partialRanges = parseEnrollmentPartialJuzRanges(amount)
+  const partialRangesByJuz = new Map(partialRanges.map((range) => [range.juzNumber, range]))
+
   if (normalizedSelectedJuzs.length > 0) {
+    if (partialRangesByJuz.size > 0) {
+      return normalizedSelectedJuzs
+        .map((juzNumber) => {
+          const partialRange = partialRangesByJuz.get(juzNumber)
+          return partialRange ? formatPartialJuzRange(partialRange) : `الجزء ${juzNumber}`
+        })
+        .join("، ")
+    }
+
     if (normalizedSelectedJuzs.length === 1) {
       return `الجزء ${normalizedSelectedJuzs[0]}`
     }
@@ -171,6 +267,10 @@ export function formatEnrollmentMemorizedAmount(amount?: string | null, selected
     }
 
     return `أجزاء متفرقة: ${normalizedSelectedJuzs.join("، ")}`
+  }
+
+  if (partialRanges.length > 0) {
+    return partialRanges.map((range) => formatPartialJuzRange(range)).join("، ")
   }
 
   if (!amount) return "-"

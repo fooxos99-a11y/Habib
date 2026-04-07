@@ -177,10 +177,20 @@ export async function GET(request: Request) {
 
     let query = supabase
       .from("exam_schedules")
-      .select("id, student_id, halaqah, exam_portion_label, portion_type, portion_number, juz_number, exam_date, status, notification_sent_at, completed_exam_id, completed_at, cancelled_at, scheduled_by_name, scheduled_by_role, created_at, updated_at")
+      .select("id, student_id, halaqah, exam_portion_label, portion_type, portion_number, juz_number, exam_date, status, notification_sent_at, completed_exam_id, completed_at, cancelled_at, scheduled_by_name, scheduled_by_role, created_at, updated_at, students(name)")
       .eq("semester_id", semesterId)
       .order("exam_date", { ascending: true })
       .order("created_at", { ascending: false })
+
+    if ((session.role === "teacher" || session.role === "deputy_teacher") && !studentId) {
+      const sessionHalaqah = String(session.halaqah || "").trim()
+
+      if (circleName && circleName !== sessionHalaqah) {
+        return NextResponse.json({ error: "لا يمكنك الوصول إلى مواعيد حلقة أخرى" }, { status: 403 })
+      }
+
+      query = query.eq("halaqah", sessionHalaqah)
+    }
 
     if (circleName) {
       query = query.eq("halaqah", circleName)

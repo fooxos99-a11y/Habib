@@ -1136,65 +1136,44 @@ export function Header() {
           return (
             <div className="absolute left-2.5 top-1/2 z-30 flex -translate-y-1/2 items-center gap-1 md:left-16 md:gap-2 transform-gpu drop-shadow-sm select-none" style={{ direction: 'ltr' }}>
               <div className="relative flex items-center gap-1 md:gap-1.5">
-                <div 
-                   className="relative z-30 flex h-[32px] w-[36px] flex-col items-center justify-center drop-shadow-md sm:h-[42px] sm:w-[48px]"
-                >
-                  <div className="absolute w-full h-full"
-                       style={{
-                         background: "linear-gradient(to bottom, #ffffff, #e1e4eb)",
-                         clipPath: "polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)",
-                         padding: "2.5px"
-                       }}>
-                    <div className="relative w-full h-full flex items-center justify-center p-[2px]"
-                         style={{
-                           background: "linear-gradient(to bottom, #eceef3, #d3d7df)",
-                           clipPath: "polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)",
-                           boxShadow: "inset 0 -2px 3px rgba(0,0,0,0.1), inset 0 2px 3px rgba(255,255,255,0.8)"
-                         }}>
-                      <span 
-                        className="relative z-10 pb-[1px] text-[14px] font-black sm:text-[20px]"
-                        style={{
-                          color: "#3453a7",
-                          filter: "drop-shadow(0px -1px 0px rgba(255,255,255,1)) drop-shadow(0px 2px 2px rgba(0,0,0,0.2))"
-                        }}
-                      >
-                        {currentLevel}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div 
-                  className="relative z-20 ml-[-18px] flex h-4 w-20 items-center sm:ml-[-24px] sm:h-5 sm:w-36"
-                  style={{
-                    background: "linear-gradient(to bottom, #ffffff, #dcdede)",
-                    borderRadius: "0 100px 100px 0",
-                    padding: "2px",
-                    paddingLeft: "0",
-                  }}
+                <div
+                  className="relative z-30 flex h-9 w-9 items-center justify-center rounded-full border-[2px] border-white/95 bg-white shadow-[0_8px_18px_rgba(15,23,42,0.22)] sm:h-11 sm:w-11"
+                  style={{ boxShadow: "0 8px 18px rgba(15,23,42,0.22)" }}
                 >
                   <div
-                    className="relative w-full h-full"
-                    style={{
-                      background: "linear-gradient(to bottom, #e2e5eb, #ced3db)",
-                      borderRadius: "0 100px 100px 0",
-                      boxShadow: "inset 0 2px 4px rgba(0,0,0,0.15)"
-                    }}
+                    className="absolute inset-0 rounded-full bg-[rgba(52,83,167,0.08)]"
+                  />
+                  <div
+                    className="absolute inset-[2px] rounded-full border border-[#3453a7]/18"
+                  />
+                  <span
+                    className="relative z-10 text-[15px] font-black leading-none text-[#3453a7] sm:text-[18px]"
+                    style={{ filter: "drop-shadow(0 1px 0 rgba(255,255,255,0.95))" }}
                   >
-                    <div 
-                      className="absolute top-0 left-0 bottom-0 z-10 transition-all duration-1000"
-                      style={{ 
-                        width: displayProgress > 0 ? `min(100%, calc(${displayProgress}% + 24px))` : "0%",
-                        background: "linear-gradient(to right, #3453a7, #5f82db)",
-                        borderRadius: "0 100px 100px 0"
+                    {currentLevel}
+                  </span>
+                </div>
+
+                <div
+                  className="relative z-20 ml-[-14px] flex h-[14px] w-[92px] items-center rounded-full border border-white/80 bg-[linear-gradient(180deg,#ffffff_0%,#dde3ec_100%)] p-[2px] sm:ml-[-18px] sm:h-[18px] sm:w-36"
+                  style={{ boxShadow: "0 6px 16px rgba(15,23,42,0.12), inset 0 1px 0 rgba(255,255,255,0.78)" }}
+                >
+                  <div
+                    className="relative h-full w-full overflow-hidden rounded-full bg-[linear-gradient(180deg,#d7dde7_0%,#c7ced9_100%)]"
+                    style={{ boxShadow: "inset 0 2px 4px rgba(15,23,42,0.18)" }}
+                  >
+                    <div
+                      className="absolute inset-y-0 left-0 z-10 rounded-full transition-all duration-1000"
+                      style={{
+                        width: `${displayProgress}%`,
+                        background: "linear-gradient(90deg, #274b97 0%, #3453a7 48%, #5f82db 100%)",
                       }}
                     >
-                      <div className="absolute top-0 left-0 right-0 h-[45%] bg-gradient-to-b from-white/40 to-transparent"></div>
+                      <div className="absolute inset-x-0 top-0 h-[48%] bg-gradient-to-b from-white/35 to-transparent" />
                     </div>
                   </div>
                 </div>
               </div>
-
             </div>
           );
         })()}

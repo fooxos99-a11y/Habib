@@ -96,6 +96,19 @@ async function sendLifecycleNotifications(params: {
   }
 }
 
+function formatRecitationDateRange(startDate: string, endDate?: string | null) {
+  const normalizedStartDate = String(startDate || "").trim()
+  const normalizedEndDate = String(endDate || "").trim() || normalizedStartDate
+
+  if (!normalizedStartDate) {
+    return ""
+  }
+
+  return normalizedStartDate === normalizedEndDate
+    ? normalizedStartDate
+    : `من ${normalizedStartDate} إلى ${normalizedEndDate}`
+}
+
 async function loadDayDetails(supabase: Awaited<ReturnType<typeof createClient>>, dayId: string) {
   const { data: day, error: dayError } = await supabase
     .from("recitation_days")
@@ -174,7 +187,7 @@ export async function GET(request: Request) {
     if (mode === "archive") {
       const { data, error } = await supabase
         .from("recitation_days")
-        .select("id, recitation_date, status, archived_at, archived_by_name, created_at")
+        .select("id, recitation_date, recitation_end_date, halaqah, status, archived_at, archived_by_name, created_at")
         .eq("status", "archived")
         .order("recitation_date", { ascending: false })
 
@@ -221,11 +234,16 @@ export async function POST(request: Request) {
 
     const { session } = auth
     const body = await request.json()
-    const recitationDate = String(body.recitationDate || "").trim()
+    const recitationStartDate = String(body.recitationStartDate || body.recitationDate || "").trim()
+    const recitationEndDate = String(body.recitationEndDate || body.recitationDate || "").trim() || recitationStartDate
     const targetHalaqah = normalizeHalaqahScope(body.halaqah)
 
-    if (!recitationDate) {
+    if (!recitationStartDate || !recitationEndDate) {
       return NextResponse.json({ error: "حدد تاريخ يوم السرد أولاً" }, { status: 400 })
+    }
+
+    if (recitationEndDate < recitationStartDate) {
+      return NextResponse.json({ error: "تاريخ النهاية يجب أن يكون مساويًا أو بعد تاريخ البداية" }, { status: 400 })
     }
 
     const supabase = await createClient()
@@ -260,7 +278,9 @@ export async function POST(request: Request) {
     const { data: createdDay, error: dayError } = await supabase
       .from("recitation_days")
       .insert({
-        recitation_date: recitationDate,
+        recitation_date: recitationStartDate,
+        recitation_end_date: recitationEndDate,
+        halaqah: null,
         status: "open",
         created_by: session.id,
         created_by_name: session.name,
@@ -342,7 +362,7 @@ export async function POST(request: Request) {
         guardian_phone: guardianPhoneByStudentId.get(student.student_id) || null,
       })),
       sessionUserId: session.id,
-      date: recitationDate,
+      date: formatRecitationDateRange(recitationStartDate, recitationEndDate),
     })
 
     const details = await loadDayDetails(supabase, createdDay.id)
@@ -368,7 +388,7 @@ export async function PATCH(request: Request) {
     const supabase = await createClient()
     const { data: openDay, error } = await supabase
       .from("recitation_days")
-      .select("id, recitation_date")
+      .select("id, recitation_date, recitation_end_date")
       .eq("status", "open")
       .order("created_at", { ascending: false })
       .limit(1)
@@ -415,28 +435,22 @@ export async function PATCH(request: Request) {
     }
 
     const archiveTimestamp = new Date().toISOString()
-    const isArchivingEntireOpenDay = recipientStudents.length === allOpenStudents.length
+    const recipientsByHalaqah = recipientStudents.reduce<Map<string, typeof recipientStudents>>((groups, student) => {
+      const halaqahKey = String(student.halaqah || "").trim() || "__no_halaqah__"
+      const currentGroup = groups.get(halaqahKey) || []
+      currentGroup.push(student)
+      groups.set(halaqahKey, currentGroup)
+      return groups
+    }, new Map())
 
-    if (isArchivingEntireOpenDay) {
-      const { error: archiveError } = await supabase
-        .from("recitation_days")
-        .update({
-          status: "archived",
-          archived_at: archiveTimestamp,
-          archived_by: auth.session.id,
-          archived_by_name: auth.session.name,
-          updated_at: archiveTimestamp,
-        })
-        .eq("id", openDay.id)
-
-      if (archiveError) {
-        throw archiveError
-      }
-    } else {
+    for (const [halaqahKey, studentsGroup] of recipientsByHalaqah.entries()) {
+      const halaqahName = halaqahKey === "__no_halaqah__" ? null : halaqahKey
       const { data: archivedDay, error: archivedDayError } = await supabase
         .from("recitation_days")
         .insert({
           recitation_date: openDay.recitation_date,
+          recitation_end_date: openDay.recitation_end_date || openDay.recitation_date,
+          halaqah: halaqahName,
           status: "archived",
           created_by: auth.session.id,
           created_by_name: auth.session.name,
@@ -452,7 +466,7 @@ export async function PATCH(request: Request) {
         throw archivedDayError || new Error("تعذر إنشاء أرشيف الحلقة المحددة")
       }
 
-      const selectedRowIds = recipientStudents.map((student) => student.id)
+      const selectedRowIds = studentsGroup.map((student) => student.id)
       const { error: moveStudentsError } = await supabase
         .from("recitation_day_students")
         .update({
@@ -463,6 +477,26 @@ export async function PATCH(request: Request) {
 
       if (moveStudentsError) {
         throw moveStudentsError
+      }
+    }
+
+    const { count: remainingStudentsCount, error: remainingStudentsError } = await supabase
+      .from("recitation_day_students")
+      .select("id", { count: "exact", head: true })
+      .eq("recitation_day_id", openDay.id)
+
+    if (remainingStudentsError) {
+      throw remainingStudentsError
+    }
+
+    if ((remainingStudentsCount || 0) === 0) {
+      const { error: deleteOpenDayError } = await supabase
+        .from("recitation_days")
+        .delete()
+        .eq("id", openDay.id)
+
+      if (deleteOpenDayError) {
+        throw deleteOpenDayError
       }
     }
 

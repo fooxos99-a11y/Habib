@@ -63,8 +63,8 @@ export default function NotificationsClient() {
 
       if (permission === "granted") {
         await navigator.serviceWorker.ready
-        await syncWebPushSubscription()
-        setSubscriptionError(null)
+        const result = await syncWebPushSubscription()
+        setSubscriptionError(result.subscribed ? null : getLastWebPushSubscriptionError())
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "تعذر تفعيل إشعارات الجوال على هذا الجهاز"
@@ -182,14 +182,16 @@ export default function NotificationsClient() {
               </div>
             )}
           </div>
-
-          {subscriptionError ? (
-            <div className="mt-3 rounded-2xl border border-[#fed7aa] bg-[#fff7ed] px-4 py-3 text-right text-sm font-semibold text-[#9a3412]">
-              تعذر ربط هذا الجهاز بالإشعارات: {subscriptionError}
-            </div>
-          ) : null}
         </div>
       )}
+
+      {subscriptionError ? (
+        <div className="border-b border-gray-100 bg-[#fffaf3] px-6 py-4">
+          <div className="rounded-2xl border border-[#fed7aa] bg-[#fff7ed] px-4 py-3 text-right text-sm font-semibold text-[#9a3412]">
+            تعذر ربط هذا الجهاز بالإشعارات: {subscriptionError}
+          </div>
+        </div>
+      ) : null}
 
       <div className="divide-y divide-gray-50">
         {notifications.length === 0 ? (

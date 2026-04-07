@@ -24,7 +24,7 @@ import type { PreviousMemorizationRange } from "@/lib/quran-data"
 import { DEFAULT_EXAM_PORTION_SETTINGS, DEFAULT_EXAM_SETTINGS, EXAM_PORTION_SETTINGS_ID, EXAM_SETTINGS_ID } from "@/lib/site-settings-constants"
 import { formatExamPortionLabel, getEligibleExamJuzs, getEligibleExamPortions, type StudentExamPlanProgressSource } from "@/lib/student-exams"
 import { DEFAULT_EXAM_WHATSAPP_TEMPLATES, EXAM_WHATSAPP_SETTINGS_ID, normalizeExamWhatsAppTemplates, type ExamWhatsAppTemplates } from "@/lib/whatsapp-notification-templates"
-import { BellRing, CalendarDays, CircleAlert, ClipboardCheck, Pencil, Save, SlidersHorizontal, Trash2 } from "lucide-react"
+import { BellRing, CalendarDays, ChevronLeft, ChevronRight, CircleAlert, ClipboardCheck, Pencil, Save, SlidersHorizontal, Trash2 } from "lucide-react"
 
 type Circle = {
   id: string
@@ -68,6 +68,7 @@ type ExamFormState = {
   studentId: string
   examDate: string
   selectedJuz: string
+  testedByName: string
   alertsCount: string
   mistakesCount: string
 }
@@ -91,14 +92,19 @@ type StudentPlanProgressState = {
   completedDays: number
 }
 
-type StudentFilter = "all" | "pending"
-
 type ScheduleExamForm = {
   juzNumber: string
   examDate: string
 }
 
 type ScheduleDialogMode = "create" | "edit"
+
+const ALL_CIRCLES_VALUE = "__all_circles__"
+const OVERVIEW_PAGE_SIZE = 5
+
+function getTodayDate() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date())
+}
 
 type ExamScheduleRow = {
   id: string
@@ -118,12 +124,14 @@ type ExamScheduleRow = {
   scheduled_by_role?: string | null
   created_at: string
   updated_at: string
+  students?: { name?: string | null } | Array<{ name?: string | null }> | null
 }
 
 const DEFAULT_FORM: ExamFormState = {
   studentId: "",
-  examDate: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date()),
+  examDate: getTodayDate(),
   selectedJuz: "",
+  testedByName: "",
   alertsCount: "0",
   mistakesCount: "0",
 }
@@ -144,7 +152,7 @@ const DEFAULT_NOTIFICATION_TEMPLATES_FORM: NotificationTemplatesForm = {
 
 const DEFAULT_SCHEDULE_FORM: ScheduleExamForm = {
   juzNumber: "",
-  examDate: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date()),
+  examDate: getTodayDate(),
 }
 
 function toSettingsForm(settings: ExamSettings): SettingsForm {
@@ -195,6 +203,14 @@ function normalizeStudentRelation(value: ExamRow["students"]) {
   return value || null
 }
 
+function normalizeScheduleStudentRelation(value: ExamScheduleRow["students"]) {
+  if (Array.isArray(value)) {
+    return value[0] || null
+  }
+
+  return value || null
+}
+
 function getExamPortionDisplay(exam: Pick<ExamRow, "exam_portion_label" | "juz_number">) {
   return exam.exam_portion_label || formatExamPortionLabel(exam.juz_number, "غير محدد")
 }
@@ -227,6 +243,10 @@ function getScheduleStatusLabel(status: ExamScheduleRow["status"]) {
   return "مجدول"
 }
 
+function isScheduleOverdue(schedule: ExamScheduleRow) {
+  return schedule.status === "scheduled" && schedule.exam_date < getTodayDate()
+}
+
 export default function AdminExamsPage() {
   const { isLoading: authLoading, isVerified: authVerified } = useAdminAuth("إدارة الاختبارات")
   const { isReady: isWhatsAppReady, isLoading: isWhatsAppStatusLoading } = useWhatsAppStatus()
@@ -238,6 +258,8 @@ export default function AdminExamsPage() {
   const [isSendingScheduleNotification, setIsSendingScheduleNotification] = useState(false)
   const [isCancellingScheduleId, setIsCancellingScheduleId] = useState<string | null>(null)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [isTemplatesDialogOpen, setIsTemplatesDialogOpen] = useState(false)
+  const [isSchedulesOverviewOpen, setIsSchedulesOverviewOpen] = useState(false)
   const [isScheduleDialogOpen, setIsScheduleDialogOpen] = useState(false)
   const [tableMissing, setTableMissing] = useState(false)
   const [schedulesTableMissing, setSchedulesTableMissing] = useState(false)
@@ -245,21 +267,32 @@ export default function AdminExamsPage() {
   const [students, setStudents] = useState<Student[]>([])
   const [exams, setExams] = useState<ExamRow[]>([])
   const [examSchedules, setExamSchedules] = useState<ExamScheduleRow[]>([])
+  const [overviewSchedules, setOverviewSchedules] = useState<ExamScheduleRow[]>([])
   const [settingsForm, setSettingsForm] = useState<SettingsForm>(DEFAULT_SETTINGS_FORM)
   const [notificationTemplatesForm, setNotificationTemplatesForm] = useState<NotificationTemplatesForm>(DEFAULT_NOTIFICATION_TEMPLATES_FORM)
   const [portionMode, setPortionMode] = useState<ExamPortionType>(DEFAULT_EXAM_PORTION_SETTINGS.mode)
-  const [studentFilter, setStudentFilter] = useState<StudentFilter>("all")
   const [selectedCircle, setSelectedCircle] = useState("")
   const [form, setForm] = useState<ExamFormState>(DEFAULT_FORM)
   const [scheduleForm, setScheduleForm] = useState<ScheduleExamForm>(DEFAULT_SCHEDULE_FORM)
   const [scheduleDialogMode, setScheduleDialogMode] = useState<ScheduleDialogMode>("create")
   const [editingScheduleId, setEditingScheduleId] = useState("")
   const [studentPlanProgressMap, setStudentPlanProgressMap] = useState<Record<string, StudentPlanProgressState>>({})
+  const [isSavingTemplates, setIsSavingTemplates] = useState(false)
+  const [overviewCircleFilter, setOverviewCircleFilter] = useState<string>(ALL_CIRCLES_VALUE)
+  const [overviewDateFilter, setOverviewDateFilter] = useState(getTodayDate())
+  const [overviewPage, setOverviewPage] = useState(1)
+  const [isOverviewSchedulesLoading, setIsOverviewSchedulesLoading] = useState(false)
+  const [overviewSchedulesTableMissing, setOverviewSchedulesTableMissing] = useState(false)
 
   useEffect(() => {
     async function bootstrap() {
       if (authLoading || !authVerified) {
         return
+      }
+
+      const savedUserName = localStorage.getItem("userName") || ""
+      if (savedUserName) {
+        setForm((current) => (current.testedByName ? current : { ...current, testedByName: savedUserName }))
       }
 
       try {
@@ -368,18 +401,7 @@ export default function AdminExamsPage() {
 
   const settingsPreview = useMemo(() => fromSettingsForm(settingsForm), [settingsForm])
   const portionUnitLabel = portionMode === "hizb" ? "الحزب" : "الجزء"
-  const filteredStudents = useMemo(() => {
-    if (studentFilter === "all") {
-      return students
-    }
-
-    return students.filter((student) => {
-      const studentExams = exams.filter((exam) => exam.student_id === student.id)
-      const passedPortionNumbers = getPassedPortionNumbers(studentExams, portionMode)
-      const eligiblePortions = getEligibleExamPortions(student, studentPlanProgressMap[student.id] || null, portionMode)
-      return eligiblePortions.some((portion) => !passedPortionNumbers.has(portion.portionNumber))
-    })
-  }, [studentFilter, students, exams, studentPlanProgressMap, portionMode])
+  const filteredStudents = useMemo(() => students, [students])
   const selectedStudent = useMemo(() => filteredStudents.find((student) => student.id === form.studentId) || null, [filteredStudents, form.studentId])
   const selectedStudentPlanProgress = useMemo(() => {
     if (!form.studentId) {
@@ -485,6 +507,50 @@ export default function AdminExamsPage() {
     void loadStudentSchedules(form.studentId)
   }, [form.studentId])
 
+  const loadOverviewSchedules = async (circleFilter: string) => {
+    try {
+      setIsOverviewSchedulesLoading(true)
+      const query = circleFilter !== ALL_CIRCLES_VALUE ? `?circle=${encodeURIComponent(circleFilter)}` : ""
+      const response = await fetch(`/api/exam-schedules${query}`, { cache: "no-store" })
+      const data = await response.json()
+      setOverviewSchedules(((data.schedules || []) as ExamScheduleRow[]).filter((schedule) => schedule.status === "scheduled"))
+      setOverviewSchedulesTableMissing(Boolean(data.tableMissing))
+    } catch (error) {
+      console.error("[admin-exams] load overview schedules:", error)
+      setOverviewSchedules([])
+      setOverviewSchedulesTableMissing(false)
+    } finally {
+      setIsOverviewSchedulesLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!isSchedulesOverviewOpen) {
+      return
+    }
+
+    setOverviewDateFilter(getTodayDate())
+    void loadOverviewSchedules(overviewCircleFilter)
+  }, [isSchedulesOverviewOpen, overviewCircleFilter])
+
+  useEffect(() => {
+    setOverviewPage(1)
+  }, [overviewCircleFilter, overviewDateFilter, isSchedulesOverviewOpen])
+
+  const overviewDateSchedules = useMemo(() => {
+    if (!overviewDateFilter) {
+      return []
+    }
+
+    return overviewSchedules.filter((schedule) => schedule.exam_date === overviewDateFilter)
+  }, [overviewSchedules, overviewDateFilter])
+
+  const overviewPageCount = Math.max(1, Math.ceil(overviewDateSchedules.length / OVERVIEW_PAGE_SIZE))
+  const paginatedOverviewSchedules = useMemo(() => {
+    const startIndex = (overviewPage - 1) * OVERVIEW_PAGE_SIZE
+    return overviewDateSchedules.slice(startIndex, startIndex + OVERVIEW_PAGE_SIZE)
+  }, [overviewDateSchedules, overviewPage])
+
   const handleSettingsChange = (field: keyof SettingsForm, value: string) => {
     setSettingsForm((current) => ({ ...current, [field]: value }))
   }
@@ -501,11 +567,10 @@ export default function AdminExamsPage() {
 
   const handleSaveSettings = async () => {
     const nextSettings = fromSettingsForm(settingsForm)
-    const nextNotificationTemplates = fromNotificationTemplatesForm(notificationTemplatesForm)
 
     try {
       setIsSavingSettings(true)
-      const [settingsResponse, templatesResponse, portionSettingsResponse] = await Promise.all([
+      const [settingsResponse, portionSettingsResponse] = await Promise.all([
         fetch("/api/site-settings", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -518,23 +583,14 @@ export default function AdminExamsPage() {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            id: EXAM_WHATSAPP_SETTINGS_ID,
-            value: nextNotificationTemplates,
-          }),
-        }),
-        fetch("/api/site-settings", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
             id: EXAM_PORTION_SETTINGS_ID,
             value: { mode: settingsForm.portionMode },
           }),
         }),
       ])
 
-      const [settingsData, templatesData, portionSettingsData] = await Promise.all([
+      const [settingsData, portionSettingsData] = await Promise.all([
         settingsResponse.json(),
-        templatesResponse.json(),
         portionSettingsResponse.json(),
       ])
 
@@ -542,16 +598,11 @@ export default function AdminExamsPage() {
         throw new Error(settingsData.error || "تعذر حفظ إعدادات الاختبارات")
       }
 
-      if (!templatesResponse.ok || !templatesData.success) {
-        throw new Error(templatesData.error || "تعذر حفظ قوالب واتساب للاختبارات")
-      }
-
       if (!portionSettingsResponse.ok || !portionSettingsData.success) {
         throw new Error(portionSettingsData.error || "تعذر حفظ وضع الاختبارات")
       }
 
       setSettingsForm({ ...toSettingsForm(nextSettings), portionMode: settingsForm.portionMode })
-      setNotificationTemplatesForm(toNotificationTemplatesForm(nextNotificationTemplates))
       setPortionMode(settingsForm.portionMode)
       setIsSettingsOpen(false)
       await showAlert("تم حفظ إعدادات الاختبارات بنجاح", "نجاح")
@@ -560,6 +611,37 @@ export default function AdminExamsPage() {
       await showAlert(error instanceof Error ? error.message : "حدث خطأ أثناء حفظ الإعدادات", "خطأ")
     } finally {
       setIsSavingSettings(false)
+    }
+  }
+
+  const handleSaveTemplates = async () => {
+    const nextNotificationTemplates = fromNotificationTemplatesForm(notificationTemplatesForm)
+
+    try {
+      setIsSavingTemplates(true)
+      const templatesResponse = await fetch("/api/site-settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: EXAM_WHATSAPP_SETTINGS_ID,
+          value: nextNotificationTemplates,
+        }),
+      })
+
+      const templatesData = await templatesResponse.json()
+
+      if (!templatesResponse.ok || !templatesData.success) {
+        throw new Error(templatesData.error || "تعذر حفظ قوالب واتساب للاختبارات")
+      }
+
+      setNotificationTemplatesForm(toNotificationTemplatesForm(nextNotificationTemplates))
+      setIsTemplatesDialogOpen(false)
+      await showAlert("تم حفظ قوالب الاختبارات بنجاح", "نجاح")
+    } catch (error) {
+      console.error("[admin-exams] save templates:", error)
+      await showAlert(error instanceof Error ? error.message : "حدث خطأ أثناء حفظ القوالب", "خطأ")
+    } finally {
+      setIsSavingTemplates(false)
     }
   }
 
@@ -574,6 +656,11 @@ export default function AdminExamsPage() {
       return
     }
 
+    if (!form.testedByName.trim()) {
+      await showAlert("أدخل اسم المختبر أولاً", "تنبيه")
+      return
+    }
+
     try {
       setIsSaving(true)
       const selectedJuz = Number(form.selectedJuz)
@@ -584,10 +671,11 @@ export default function AdminExamsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           student_id: form.studentId,
-          exam_date: form.examDate,
+          exam_date: getTodayDate(),
           portion_type: portionMode,
           portion_number: selectedJuz,
           exam_portion_label: selectedPortion?.label || formatExamPortionLabel(selectedJuz, "", portionMode),
+          tested_by_name: form.testedByName.trim(),
           alerts_count: parseCount(form.alertsCount),
           mistakes_count: parseCount(form.mistakesCount),
         }),
@@ -653,17 +741,19 @@ export default function AdminExamsPage() {
   }
 
   const handleOpenScheduleDialog = (schedule?: ExamScheduleRow) => {
-    if (!form.studentId) {
+    if (!schedule && !form.studentId) {
       void showAlert("اختر الطالب أولاً", "تنبيه")
       return
     }
 
-    if (availableJuzs.length === 0) {
+    if (!schedule && availableJuzs.length === 0) {
       void showAlert(`لا يوجد ${portionUnitLabel} متاح لإرسال تنبيه اختبار لهذا الطالب حالياً`, "تنبيه")
       return
     }
 
     if (schedule) {
+      setSelectedCircle(schedule.halaqah)
+      setForm((current) => ({ ...current, studentId: schedule.student_id }))
       setScheduleDialogMode("edit")
       setEditingScheduleId(schedule.id)
       setScheduleForm({
@@ -725,7 +815,15 @@ export default function AdminExamsPage() {
       setEditingScheduleId("")
       setScheduleDialogMode("create")
       await loadStudentSchedules(form.studentId)
-      await showAlert(scheduleDialogMode === "edit" ? "تم تحديث موعد الاختبار وإشعار الطالب" : "تمت جدولة الاختبار وإرسال التنبيه للطالب", "نجاح")
+      if (isSchedulesOverviewOpen) {
+        await loadOverviewSchedules(overviewCircleFilter)
+      }
+      await showAlert(
+        scheduleDialogMode === "edit"
+          ? "تم تحديث موعد الاختبار، مع إشعار الطالب داخل المنصة وإرسال رسالة لولي الأمر عبر الواتساب"
+          : "تمت جدولة الاختبار، مع إشعار الطالب داخل المنصة وإرسال رسالة لولي الأمر عبر الواتساب",
+        "نجاح",
+      )
     } catch (error) {
       console.error("[admin-exams] send schedule notification:", error)
       await showAlert(error instanceof Error ? error.message : "حدث خطأ أثناء إرسال تنبيه الاختبار", "خطأ")
@@ -734,8 +832,10 @@ export default function AdminExamsPage() {
     }
   }
 
-  const handleCancelSchedule = async (scheduleId: string) => {
-    if (!form.studentId) {
+  const handleCancelSchedule = async (scheduleId: string, studentIdOverride?: string) => {
+    const targetStudentId = studentIdOverride || form.studentId
+
+    if (!targetStudentId) {
       return
     }
 
@@ -750,8 +850,11 @@ export default function AdminExamsPage() {
         throw new Error(data.error || "تعذر إلغاء موعد الاختبار")
       }
 
-      await loadStudentSchedules(form.studentId)
-      await showAlert("تم إلغاء موعد الاختبار وإشعار الطالب", "نجاح")
+      await loadStudentSchedules(targetStudentId)
+      if (isSchedulesOverviewOpen) {
+        await loadOverviewSchedules(overviewCircleFilter)
+      }
+      await showAlert("تم إلغاء موعد الاختبار، مع إشعار الطالب داخل المنصة وإرسال رسالة لولي الأمر عبر الواتساب", "نجاح")
     } catch (error) {
       console.error("[admin-exams] cancel schedule:", error)
       await showAlert(error instanceof Error ? error.message : "حدث خطأ أثناء إلغاء موعد الاختبار", "خطأ")
@@ -779,69 +882,79 @@ export default function AdminExamsPage() {
             </div>
           ) : null}
 
-          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-            <div className="grid gap-4 md:grid-cols-3 md:w-auto md:min-w-[640px]">
-              <div className="space-y-2 text-right">
-                <Label className="text-sm font-black text-[#334155]">الحالة</Label>
-                <Select
-                  value={studentFilter}
-                  onValueChange={(value) => setStudentFilter(value as StudentFilter)}
-                  dir="rtl"
-                >
-                  <SelectTrigger className="h-11 rounded-2xl border-[#d7e3f2] bg-white">
-                    <SelectValue placeholder="اختر الحالة" />
-                  </SelectTrigger>
-                  <SelectContent dir="rtl">
-                    <SelectItem value="pending">الطلاب الذين لم يتم اختبارهم</SelectItem>
-                    <SelectItem value="all">جميع الطلاب</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+          <div className="flex flex-wrap items-center justify-start gap-3">
+            {form.studentId ? (
+              <Button
+                type="button"
+                onClick={() => handleOpenScheduleDialog()}
+                disabled={tableMissing || !selectedStudent || availableJuzs.length === 0}
+                className="h-11 rounded-2xl bg-[#3453a7] px-6 text-sm font-black text-white hover:bg-[#274187] disabled:bg-[#3453a7] disabled:opacity-60"
+              >
+                <BellRing className="me-2 h-4 w-4" />
+                جدولة الاختبارات
+              </Button>
+            ) : null}
 
-              <div className="space-y-2 text-right">
-                <Label className="text-sm font-black text-[#334155]">الحلقة</Label>
-                <Select value={selectedCircle} onValueChange={setSelectedCircle} dir="rtl">
-                  <SelectTrigger className="h-11 rounded-2xl border-[#d7e3f2] bg-white">
-                    <SelectValue placeholder="اختر الحلقة" />
-                  </SelectTrigger>
-                  <SelectContent dir="rtl">
-                    {circles.map((circle) => (
-                      <SelectItem key={circle.id} value={circle.name}>{circle.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            <Button type="button" onClick={() => setIsSchedulesOverviewOpen(true)} className="h-11 rounded-2xl bg-[#3453a7] px-6 text-sm font-black text-white hover:bg-[#274187]">
+              <CalendarDays className="me-2 h-4 w-4" />
+              المواعيد
+            </Button>
 
-              <div className="space-y-2 text-right">
-                <Label className="text-sm font-black text-[#334155]">الطالب</Label>
-                <Select
-                  value={form.studentId || undefined}
-                  onValueChange={(value) => setForm((current) => ({
-                    ...current,
-                    studentId: value,
-                    selectedJuz: "",
-                    alertsCount: "0",
-                    mistakesCount: "0",
-                  }))}
-                  dir="rtl"
-                  disabled={!selectedCircle || isCircleDataLoading || filteredStudents.length === 0}
-                >
-                  <SelectTrigger className="h-11 rounded-2xl border-[#d7e3f2] bg-white disabled:cursor-not-allowed disabled:opacity-60">
-                    <SelectValue placeholder={selectedCircle ? (isCircleDataLoading ? "جاري التحميل" : filteredStudents.length > 0 ? "اختر الطالب" : "لا يوجد طلاب") : "اختر الحلقة أولاً"} />
-                  </SelectTrigger>
-                  <SelectContent dir="rtl">
-                    {selectedCircle ? filteredStudents.map((student) => (
-                      <SelectItem key={student.id} value={student.id}>{student.name}</SelectItem>
-                    )) : null}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <Button type="button" onClick={() => setIsSettingsOpen(true)} className="h-11 rounded-2xl bg-[#3453a7] px-6 text-sm font-black text-white hover:bg-[#274187] md:shrink-0">
+            <Button type="button" onClick={() => setIsSettingsOpen(true)} className="h-11 rounded-2xl bg-[#3453a7] px-6 text-sm font-black text-white hover:bg-[#274187]">
               <SlidersHorizontal className="me-2 h-4 w-4" />
               إعدادات الاختبارات
             </Button>
+          </div>
+
+          <div className="rounded-[28px] border border-[#dbe5f1] bg-white p-4 shadow-[0_16px_40px_rgba(15,23,42,0.04)]">
+            <div className="text-right">
+              <div className="inline-flex max-w-full flex-col gap-4 md:flex-row md:items-end">
+                <div className="w-[220px] max-w-full space-y-2 text-right">
+                  <Label className="text-sm font-black text-[#334155]">الحلقة</Label>
+                  <Select value={selectedCircle} onValueChange={setSelectedCircle} dir="rtl">
+                    <SelectTrigger className="h-12 rounded-2xl border-[#d7e3f2] bg-white px-4 shadow-sm">
+                      <SelectValue placeholder="اختر الحلقة" />
+                    </SelectTrigger>
+                    <SelectContent dir="rtl">
+                      {circles.map((circle) => (
+                        <SelectItem key={circle.id} value={circle.name}>{circle.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="w-[320px] max-w-full space-y-2 text-right">
+                  <Label className="text-sm font-black text-[#334155]">الطالب</Label>
+                  <Select
+                    value={form.studentId || undefined}
+                    onValueChange={(value) => setForm((current) => ({
+                      ...current,
+                      studentId: value,
+                      selectedJuz: "",
+                      alertsCount: "0",
+                      mistakesCount: "0",
+                    }))}
+                    dir="rtl"
+                    disabled={!selectedCircle || isCircleDataLoading || filteredStudents.length === 0}
+                  >
+                    <SelectTrigger className="h-12 rounded-2xl border-[#d7e3f2] bg-white px-4 shadow-sm disabled:cursor-not-allowed disabled:opacity-60">
+                      <SelectValue placeholder={selectedCircle ? (isCircleDataLoading ? "جاري التحميل" : filteredStudents.length > 0 ? "اختر الطالب" : "لا يوجد طلاب") : "اختر الحلقة أولاً"} />
+                    </SelectTrigger>
+                    <SelectContent dir="rtl">
+                      {selectedCircle ? filteredStudents.map((student) => (
+                        <SelectItem key={student.id} value={student.id}>{student.name}</SelectItem>
+                      )) : null}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+
+            {!form.studentId ? (
+              <div className="mt-2 rounded-[24px] border border-dashed border-[#d7e3f2] bg-white px-5 py-6 text-center text-sm font-black text-[#64748b]">
+                اختر الطالب أولاً لعرض اختبار الطالب والمواعيد والسجل.
+              </div>
+            ) : null}
           </div>
 
           {tableMissing ? (
@@ -850,22 +963,18 @@ export default function AdminExamsPage() {
             </div>
           ) : null}
 
-          {!form.studentId ? (
-            <div className="rounded-[28px] border border-dashed border-[#d7e3f2] px-5 py-10 text-center text-sm font-black text-[#64748b]">
-              اختر الطالب أولاً لعرض إدارة الاختبارات والمواعيد والسجل.
-            </div>
-          ) : (
+          {!form.studentId ? null : (
           <section className="grid gap-6 xl:grid-cols-2">
-            <Card className="rounded-[30px] border-[#dbe5f1] bg-white shadow-[0_16px_45px_rgba(15,23,42,0.06)]">
+            <Card className="rounded-[30px] border-[#dbe5f1] bg-white shadow-[0_16px_45px_rgba(15,23,42,0.06)] xl:col-span-2">
               <CardHeader className="text-right">
                 <CardTitle className="flex items-center justify-start gap-2 text-2xl font-black text-[#1a2332]">
                   <ClipboardCheck className="h-6 w-6 text-[#3453a7]" />
-                  إدارة الاختبارات
+                  اختبار الطالب
                 </CardTitle>
               </CardHeader>
 
-              <CardContent className="space-y-5">
-                <div className="grid gap-4 md:grid-cols-2">
+              <CardContent>
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1.65fr)_minmax(180px,1fr)_minmax(150px,0.75fr)_minmax(150px,0.75fr)_auto] lg:items-end">
                   <div className="space-y-2 text-right">
                     <Label className="text-sm font-black text-[#334155]">{portionUnitLabel} المراد اختباره</Label>
                     <Select key={form.studentId || "no-student"} value={form.selectedJuz || undefined} onValueChange={(value) => setForm((current) => ({ ...current, selectedJuz: value }))} dir="rtl">
@@ -879,17 +988,15 @@ export default function AdminExamsPage() {
                       </SelectContent>
                     </Select>
                     {selectedStudent && eligiblePortionNumbers.length > 0 && availableJuzs.length === 0 ? (
-                      <div className="text-xs font-bold text-[#b45309]">كل {portionMode === "hizb" ? "الأحزاب" : "الأجزاء"} المستخرجة من محفوظ هذا الطالب سبق اختبارها.</div>
+                      <div className="text-xs font-bold text-[#20335f]">كل محفوظه تم اختباره فيه.</div>
                     ) : null}
                   </div>
 
                   <div className="space-y-2 text-right">
-                    <Label className="text-sm font-black text-[#334155]">تاريخ الاختبار</Label>
-                    <Input type="date" value={form.examDate} onChange={(event) => setForm((current) => ({ ...current, examDate: event.target.value }))} className="h-11 rounded-2xl border-[#d7e3f2] bg-white text-base font-bold" />
+                    <Label className="text-sm font-black text-[#334155]">اسم المختبر</Label>
+                    <Input value={form.testedByName} onChange={(event) => setForm((current) => ({ ...current, testedByName: event.target.value }))} placeholder="اكتب اسم المختبر" className="h-11 rounded-2xl border-[#d7e3f2] bg-white text-base font-bold" />
                   </div>
-                </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2 text-right">
                     <Label className="text-sm font-black text-[#334155]">عدد التنبيهات</Label>
                     <Input type="number" min="0" value={form.alertsCount} onChange={(event) => setForm((current) => ({ ...current, alertsCount: event.target.value }))} className="h-11 rounded-2xl border-[#d7e3f2] bg-white text-base font-bold" />
@@ -898,78 +1005,13 @@ export default function AdminExamsPage() {
                     <Label className="text-sm font-black text-[#334155]">عدد الأخطاء</Label>
                     <Input type="number" min="0" value={form.mistakesCount} onChange={(event) => setForm((current) => ({ ...current, mistakesCount: event.target.value }))} className="h-11 rounded-2xl border-[#d7e3f2] bg-white text-base font-bold" />
                   </div>
-                </div>
 
-                <div className="flex justify-end">
-                  <div className="flex flex-wrap justify-end gap-3">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => handleOpenScheduleDialog()}
-                      disabled={tableMissing || !selectedStudent || availableJuzs.length === 0}
-                      className="h-11 rounded-2xl border-[#d7e3f2] bg-white px-6 text-sm font-black text-[#1a2332] hover:bg-[#f8fbff] disabled:opacity-60"
-                    >
-                      <BellRing className="me-2 h-4 w-4 text-[#3453a7]" />
-                      جدولة اختبار
-                    </Button>
-
-                    <Button onClick={handleSaveExam} disabled={isSaving || tableMissing || !form.selectedJuz} className="h-11 rounded-2xl bg-[#3453a7] px-6 text-sm font-black text-white hover:bg-[#274187] disabled:bg-[#3453a7]">
+                  <div className="flex justify-end lg:pb-0.5">
+                    <Button onClick={handleSaveExam} disabled={isSaving || tableMissing || !form.selectedJuz} className="h-11 w-full rounded-2xl bg-[#3453a7] px-6 text-sm font-black text-white hover:bg-[#274187] disabled:bg-[#3453a7] lg:w-auto">
                       {isSaving ? "جاري الحفظ..." : "حفظ الاختبار"}
                     </Button>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-
-            <Card className="rounded-[30px] border-[#dde6f0] bg-white shadow-[0_16px_45px_rgba(15,23,42,0.06)]">
-              <CardHeader className="text-right">
-                <CardTitle className="flex items-center justify-start gap-2 text-2xl font-black text-[#1a2332]">
-                  <CalendarDays className="h-5 w-5 text-[#3453a7]" />
-                  مواعيد الاختبارات
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {schedulesTableMissing ? (
-                  <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-4 text-right text-sm font-bold leading-7 text-amber-800">
-                    جدول مواعيد الاختبارات غير موجود بعد. شغّل ملف scripts/045_create_exam_schedules.sql أولاً.
-                  </div>
-                ) : examSchedules.length > 0 ? (
-                  <div className="space-y-3">
-                    {examSchedules.map((schedule) => (
-                      <div key={schedule.id} className="rounded-[24px] border border-[#e5edf6] bg-[#fbfdff] px-4 py-4">
-                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                          <div className="space-y-2 text-right">
-                            <div className="text-base font-black text-[#1a2332]">{schedule.exam_portion_label}</div>
-                            <div className="text-sm font-semibold text-[#64748b]">تاريخ الموعد: {schedule.exam_date}</div>
-                          </div>
-
-                          <div className="flex flex-wrap items-center justify-end gap-2">
-                            <Badge className={`${getScheduleStatusTone(schedule.status)} border-0 px-3 py-1 text-xs font-black`}>
-                              {getScheduleStatusLabel(schedule.status)}
-                            </Badge>
-
-                            {schedule.status === "scheduled" ? (
-                              <>
-                                <Button type="button" variant="outline" onClick={() => handleOpenScheduleDialog(schedule)} className="h-9 rounded-xl border-[#d7e3f2] bg-white px-3 text-xs font-black text-[#1a2332] hover:bg-[#f8fbff]">
-                                  <Pencil className="me-1.5 h-3.5 w-3.5" />
-                                  تعديل
-                                </Button>
-                                <Button type="button" variant="outline" onClick={() => handleCancelSchedule(schedule.id)} disabled={isCancellingScheduleId === schedule.id} className="h-9 rounded-xl border-[#fee2e2] bg-white px-3 text-xs font-black text-[#b91c1c] hover:bg-[#fff7f7] disabled:opacity-60">
-                                  <Trash2 className="me-1.5 h-3.5 w-3.5" />
-                                  {isCancellingScheduleId === schedule.id ? "جاري الإلغاء..." : "إلغاء"}
-                                </Button>
-                              </>
-                            ) : null}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="rounded-[24px] border border-dashed border-[#d7e3f2] px-4 py-8 text-center text-sm font-bold text-[#7b8794]">
-                    لا توجد مواعيد اختبارات مسجلة لهذا الطالب بعد.
-                  </div>
-                )}
               </CardContent>
             </Card>
 
@@ -986,10 +1028,10 @@ export default function AdminExamsPage() {
                     <TableHeader>
                       <TableRow className="bg-[#f8fafc] hover:bg-[#f8fafc]">
                         <TableHead className="text-right font-black text-[#475569]">الطالب</TableHead>
-                        <TableHead className="text-right font-black text-[#475569]">{portionMode === "hizb" ? "الحزب/النطاق" : "الجزء/النطاق"}</TableHead>
+                        <TableHead className="text-right font-black text-[#475569]">النطاق</TableHead>
                         <TableHead className="text-right font-black text-[#475569]">التاريخ</TableHead>
                         <TableHead className="text-right font-black text-[#475569]">تنبيهات</TableHead>
-                        <TableHead className="text-right font-black text-[#475569]">أخطاء</TableHead>
+                        <TableHead className="text-right font-black text-[#475569]">الأخطاء</TableHead>
                         <TableHead className="text-right font-black text-[#475569]">النتيجة</TableHead>
                         <TableHead className="text-right font-black text-[#475569]">الحالة</TableHead>
                         <TableHead className="text-right font-black text-[#475569]">المختبِر</TableHead>
@@ -1031,10 +1073,15 @@ export default function AdminExamsPage() {
             <DialogContent className="max-w-4xl rounded-[28px] border border-[#dbe5f1] bg-white p-0 shadow-[0_24px_70px_rgba(15,23,42,0.14)]" showCloseButton={false}>
               <div className="overflow-hidden rounded-[28px] bg-white">
                 <DialogHeader className="border-b border-[#e5edf6] px-6 py-5">
-                  <DialogTitle className="flex w-full items-center justify-start gap-2 text-left text-2xl font-black text-[#1a2332]">
-                    <SlidersHorizontal className="h-5 w-5 text-[#3453a7]" />
-                    إعدادات الاختبارات
-                  </DialogTitle>
+                  <div className="flex w-full items-center justify-between gap-4">
+                    <DialogTitle className="flex items-center justify-start gap-2 text-left text-2xl font-black text-[#1a2332]">
+                      <SlidersHorizontal className="h-5 w-5 text-[#3453a7]" />
+                      إعدادات الاختبارات
+                    </DialogTitle>
+                    <Button type="button" variant="outline" onClick={() => setIsTemplatesDialogOpen(true)} className="h-10 rounded-2xl border-[#d7e3f2] bg-white px-4 text-sm font-black text-[#3453a7] hover:bg-[#f8fbff]">
+                      القوالب
+                    </Button>
+                  </div>
                 </DialogHeader>
 
                 <div className="grid gap-5 px-6 py-6 sm:grid-cols-2">
@@ -1068,7 +1115,30 @@ export default function AdminExamsPage() {
                   </div>
                 </div>
 
-                <div className="border-t border-[#e5edf6] px-6 py-6">
+                <div className="flex justify-end gap-3 border-t border-[#e5edf6] px-6 py-4">
+                  <Button type="button" variant="outline" onClick={() => setIsSettingsOpen(false)} className="h-11 rounded-2xl border-[#d7e3f2] bg-white px-5 text-sm font-black text-[#1a2332] hover:bg-[#f8fbff]">
+                    إغلاق
+                  </Button>
+                  <Button type="button" onClick={handleSaveSettings} disabled={isSavingSettings} className="h-11 rounded-2xl bg-[#3453a7] px-6 text-sm font-black text-white hover:bg-[#274187] disabled:bg-[#3453a7]">
+                    <Save className="me-2 h-4 w-4" />
+                    {isSavingSettings ? "جاري الحفظ..." : "حفظ الإعدادات"}
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={isTemplatesDialogOpen} onOpenChange={setIsTemplatesDialogOpen}>
+            <DialogContent className="max-w-4xl rounded-[28px] border border-[#dbe5f1] bg-white p-0 shadow-[0_24px_70px_rgba(15,23,42,0.14)]" showCloseButton={false}>
+              <div className="overflow-hidden rounded-[28px] bg-white">
+                <DialogHeader className="border-b border-[#e5edf6] px-6 py-5">
+                  <DialogTitle className="flex w-full items-center justify-start gap-2 text-left text-2xl font-black text-[#1a2332]">
+                    <BellRing className="h-5 w-5 text-[#3453a7]" />
+                    قوالب الاختبارات
+                  </DialogTitle>
+                </DialogHeader>
+
+                <div className="px-6 py-6">
                   <div className="mb-4 space-y-1 text-right">
                     <div className="flex items-center justify-start gap-2">
                       <h3 className="text-base font-black text-[#1a2332]">قوالب التنبيه والرسائل</h3>
@@ -1103,12 +1173,117 @@ export default function AdminExamsPage() {
                 </div>
 
                 <div className="flex justify-end gap-3 border-t border-[#e5edf6] px-6 py-4">
-                  <Button type="button" variant="outline" onClick={() => setIsSettingsOpen(false)} className="h-11 rounded-2xl border-[#d7e3f2] bg-white px-5 text-sm font-black text-[#1a2332] hover:bg-[#f8fbff]">
+                  <Button type="button" variant="outline" onClick={() => setIsTemplatesDialogOpen(false)} className="h-11 rounded-2xl border-[#d7e3f2] bg-white px-5 text-sm font-black text-[#1a2332] hover:bg-[#f8fbff]">
                     إغلاق
                   </Button>
-                  <Button type="button" onClick={handleSaveSettings} disabled={isSavingSettings} className="h-11 rounded-2xl bg-[#3453a7] px-6 text-sm font-black text-white hover:bg-[#274187] disabled:bg-[#3453a7]">
+                  <Button type="button" onClick={handleSaveTemplates} disabled={isSavingTemplates} className="h-11 rounded-2xl bg-[#3453a7] px-6 text-sm font-black text-white hover:bg-[#274187] disabled:bg-[#3453a7]">
                     <Save className="me-2 h-4 w-4" />
-                    {isSavingSettings ? "جاري الحفظ..." : "حفظ الإعدادات"}
+                    {isSavingTemplates ? "جاري الحفظ..." : "حفظ القوالب"}
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={isSchedulesOverviewOpen} onOpenChange={setIsSchedulesOverviewOpen}>
+            <DialogContent className="max-h-[90vh] w-[calc(100vw-24px)] max-w-4xl rounded-[28px] border border-[#dbe5f1] bg-white p-0 shadow-[0_24px_70px_rgba(15,23,42,0.14)] sm:w-full" showCloseButton={false}>
+              <div className="overflow-hidden rounded-[28px] bg-white">
+                <DialogHeader className="border-b border-[#e5edf6] px-4 py-4 sm:px-6 sm:py-5">
+                  <DialogTitle className="flex w-full items-center justify-start gap-2 text-left text-2xl font-black text-[#1a2332]">
+                    <CalendarDays className="h-5 w-5 text-[#3453a7]" />
+                    المواعيد
+                  </DialogTitle>
+                </DialogHeader>
+
+                <div className="space-y-5 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2 text-right">
+                      <Label className="text-sm font-black text-[#334155]">الحلقة</Label>
+                      <Select value={overviewCircleFilter} onValueChange={setOverviewCircleFilter} dir="rtl">
+                        <SelectTrigger className="h-11 rounded-2xl border-[#d7e3f2] bg-white">
+                          <SelectValue placeholder="اختر الحلقة" />
+                        </SelectTrigger>
+                        <SelectContent dir="rtl">
+                          <SelectItem value={ALL_CIRCLES_VALUE}>جميع الحلقات</SelectItem>
+                          {circles.map((circle) => (
+                            <SelectItem key={`overview-circle-${circle.id}`} value={circle.name}>{circle.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2 text-right">
+                      <Label className="text-sm font-black text-[#334155]">التاريخ</Label>
+                      <Input type="date" value={overviewDateFilter} onChange={(event) => setOverviewDateFilter(event.target.value)} className="h-11 rounded-2xl border-[#d7e3f2] bg-white text-base font-bold" />
+                    </div>
+                  </div>
+
+                  {overviewSchedulesTableMissing ? (
+                    <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-4 text-right text-sm font-bold leading-7 text-amber-800">
+                      جدول مواعيد الاختبارات غير موجود بعد. شغّل ملف scripts/045_create_exam_schedules.sql أولاً.
+                    </div>
+                  ) : isOverviewSchedulesLoading ? (
+                    <div className="flex min-h-[220px] items-center justify-center">
+                      <SiteLoader />
+                    </div>
+                  ) : !overviewDateFilter ? (
+                    <div className="rounded-[24px] border border-dashed border-[#d7e3f2] px-4 py-8 text-center text-sm font-bold text-[#7b8794]">
+                      اختر التاريخ لعرض الطلاب الذين لديهم موعد في هذا اليوم.
+                    </div>
+                  ) : overviewDateSchedules.length > 0 ? (
+                    <div className="space-y-3">
+                      {paginatedOverviewSchedules.map((schedule) => {
+                        const student = normalizeScheduleStudentRelation(schedule.students)
+                        const isOverdue = isScheduleOverdue(schedule)
+
+                        return (
+                          <div key={`overview-schedule-${schedule.id}`} className="rounded-[24px] border border-[#e5edf6] px-4 py-4">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                              <div className="space-y-1 text-right">
+                                <div className="text-base font-black text-[#1a2332]">{student?.name || "طالب"}</div>
+                                <div className="text-sm font-semibold text-[#475569]">{schedule.exam_portion_label}</div>
+                                {isOverdue ? (
+                                  <div className="text-sm font-black text-amber-600">فائت</div>
+                                ) : null}
+                              </div>
+
+                              <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto sm:flex-nowrap">
+                                <Button type="button" variant="outline" onClick={() => handleOpenScheduleDialog(schedule)} className="h-9 min-w-[96px] flex-1 rounded-xl border-[#d7e3f2] bg-white px-3 text-xs font-black text-[#1a2332] hover:bg-[#f8fbff] sm:flex-none">
+                                  <Pencil className="me-1.5 h-3.5 w-3.5" />
+                                  تعديل
+                                </Button>
+                                <Button type="button" variant="outline" onClick={() => handleCancelSchedule(schedule.id, schedule.student_id)} disabled={isCancellingScheduleId === schedule.id} className="h-9 min-w-[96px] flex-1 rounded-xl border-[#fee2e2] bg-white px-3 text-xs font-black text-[#b91c1c] hover:bg-[#fff7f7] disabled:opacity-60 sm:flex-none">
+                                  <Trash2 className="me-1.5 h-3.5 w-3.5" />
+                                  {isCancellingScheduleId === schedule.id ? "جاري الإلغاء..." : "إلغاء"}
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+
+                      <div className="flex items-center justify-center gap-3 pt-2">
+                        <Button type="button" variant="outline" onClick={() => setOverviewPage((current) => Math.max(1, current - 1))} disabled={overviewPage === 1} className="h-10 w-10 rounded-full border-[#d7e3f2] bg-white p-0 text-[#1a2332] hover:bg-[#f8fbff] disabled:opacity-50">
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
+                        <div className="min-w-[88px] text-center text-sm font-black text-[#475569]">
+                          {overviewPage} / {overviewPageCount}
+                        </div>
+                        <Button type="button" variant="outline" onClick={() => setOverviewPage((current) => Math.min(overviewPageCount, current + 1))} disabled={overviewPage >= overviewPageCount} className="h-10 w-10 rounded-full border-[#d7e3f2] bg-white p-0 text-[#1a2332] hover:bg-[#f8fbff] disabled:opacity-50">
+                          <ChevronLeft className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-[24px] border border-dashed border-[#d7e3f2] px-4 py-8 text-center text-sm font-bold text-[#7b8794]">
+                      لا توجد مواعيد اختبارات في التاريخ المحدد.
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-end border-t border-[#e5edf6] px-4 py-4 sm:px-6">
+                  <Button type="button" variant="outline" onClick={() => setIsSchedulesOverviewOpen(false)} className="h-11 rounded-2xl border-[#d7e3f2] bg-white px-5 text-sm font-black text-[#1a2332] hover:bg-[#f8fbff]">
+                    إغلاق
                   </Button>
                 </div>
               </div>
@@ -1121,7 +1296,7 @@ export default function AdminExamsPage() {
                 <DialogHeader className="border-b border-[#e5edf6] px-6 py-5">
                   <DialogTitle className="flex w-full items-center justify-start gap-2 text-left text-2xl font-black text-[#1a2332]">
                     <BellRing className="h-5 w-5 text-[#3453a7]" />
-                    {scheduleDialogMode === "edit" ? "تعديل موعد اختبار" : "جدولة اختبار للطالب"}
+                    {scheduleDialogMode === "edit" ? "تعديل موعد اختبار" : "جدولة الاختبارات"}
                   </DialogTitle>
                 </DialogHeader>
 

@@ -30,6 +30,23 @@ export function isWebPushPermissionDeniedError(error: unknown) {
     || message.includes("denied permission")
 }
 
+export function isWebPushServiceUnavailableError(error: unknown) {
+  const name = String((error as { name?: string } | null)?.name || "").toLowerCase()
+  const message = String((error as { message?: string } | null)?.message || error || "").toLowerCase()
+
+  return name === "aborterror"
+    || message.includes("push service not available")
+    || message.includes("push service unavailable")
+    || message.includes("registration failed")
+}
+
+export type WebPushSyncResult = {
+  configured: boolean
+  subscribed: boolean
+  permissionDenied?: boolean
+  pushServiceUnavailable?: boolean
+}
+
 async function getResponseErrorMessage(response: Response, fallbackMessage: string) {
   try {
     const contentType = response.headers.get("content-type") || ""
@@ -88,7 +105,7 @@ function urlBase64ToUint8Array(base64String: string) {
   return outputArray
 }
 
-export async function syncWebPushSubscription() {
+export async function syncWebPushSubscription(): Promise<WebPushSyncResult> {
   if (typeof window === "undefined" || !("serviceWorker" in navigator) || !("PushManager" in window)) {
     return { configured: false, subscribed: false }
   }
@@ -124,6 +141,11 @@ export async function syncWebPushSubscription() {
       if (isWebPushPermissionDeniedError(error)) {
         storeDiagnosticError("تم رفض إذن الإشعارات من إعدادات الجهاز أو المتصفح")
         return { configured: true, subscribed: false, permissionDenied: true }
+      }
+
+      if (isWebPushServiceUnavailableError(error)) {
+        storeDiagnosticError("خدمة الإشعارات غير متاحة حاليًا على هذا الجهاز أو المتصفح")
+        return { configured: true, subscribed: false, pushServiceUnavailable: true }
       }
 
       const normalizedError = error instanceof Error ? error : new Error("تعذر إنشاء اشتراك المتصفح للإشعارات")

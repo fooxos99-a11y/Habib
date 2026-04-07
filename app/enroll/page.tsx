@@ -1,16 +1,31 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "@/lib/supabase-client";
 import { toast } from "@/hooks/use-toast";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { SiteLoader } from "@/components/ui/site-loader"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { User, Phone, Hash, GraduationCap, BookOpen, UserPlus, ChevronDown } from "lucide-react";
-import { formatEnrollmentMemorizedAmount, getContiguousSelectedJuzRange } from "@/lib/enrollment-test-utils";
+import { getJuzBounds, SURAHS } from "@/lib/quran-data";
+import {
+  formatEnrollmentMemorizedAmount,
+  getContiguousSelectedJuzRange,
+  serializeEnrollmentPartialJuzRanges,
+  type EnrollmentPartialJuzRange,
+} from "@/lib/enrollment-test-utils";
 
 const ALL_JUZS = Array.from({ length: 30 }, (_, index) => index + 1);
+const DOUBLE_TAP_DELAY_MS = 260;
+
+type PartialRangeDraft = {
+  fromSurahNumber: number;
+  fromVerseNumber: number;
+  toSurahNumber: number;
+  toVerseNumber: number;
+};
 
 export default function EnrollPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -18,6 +33,11 @@ export default function EnrollPage() {
   const [isEnrollmentOpen, setIsEnrollmentOpen] = useState(true);
   const [isLoadingStatus, setIsLoadingStatus] = useState(true);
   const [isMemorizedDialogOpen, setIsMemorizedDialogOpen] = useState(false);
+  const [isPartialRangeDialogOpen, setIsPartialRangeDialogOpen] = useState(false);
+  const [activePartialJuz, setActivePartialJuz] = useState<number | null>(null);
+  const [partialRangeDraft, setPartialRangeDraft] = useState<PartialRangeDraft | null>(null);
+  const [partialJuzRanges, setPartialJuzRanges] = useState<Record<number, EnrollmentPartialJuzRange>>({});
+  const tapTimersRef = useRef<Record<number, number | undefined>>({});
   
   useEffect(() => {
     const fetchEnrollmentStatus = async () => {
@@ -48,10 +68,25 @@ export default function EnrollPage() {
     selectedJuzs: [] as number[],
   });
 
-  const memorizedSummary = useMemo(
-    () => formatEnrollmentMemorizedAmount(undefined, formData.selectedJuzs),
-    [formData.selectedJuzs],
+  const serializedPartialJuzRanges = useMemo(
+    () => serializeEnrollmentPartialJuzRanges(partialJuzRanges),
+    [partialJuzRanges],
   );
+
+  const memorizedSummary = useMemo(
+    () => formatEnrollmentMemorizedAmount(serializedPartialJuzRanges || undefined, formData.selectedJuzs),
+    [formData.selectedJuzs, serializedPartialJuzRanges],
+  );
+
+  useEffect(() => {
+    return () => {
+      Object.values(tapTimersRef.current).forEach((timerId) => {
+        if (timerId) {
+          window.clearTimeout(timerId);
+        }
+      });
+    };
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name } = e.target;
@@ -66,6 +101,8 @@ export default function EnrollPage() {
   };
 
   const toggleJuzSelection = (juzNumber: number) => {
+    const wasSelected = formData.selectedJuzs.includes(juzNumber);
+
     setFormData((current) => {
       const selectedJuzs = current.selectedJuzs.includes(juzNumber)
         ? current.selectedJuzs.filter((item) => item !== juzNumber)
@@ -76,6 +113,18 @@ export default function EnrollPage() {
         selectedJuzs,
       };
     });
+
+    if (wasSelected) {
+      setPartialJuzRanges((current) => {
+        if (!(juzNumber in current)) {
+          return current;
+        }
+
+        const nextRanges = { ...current };
+        delete nextRanges[juzNumber];
+        return nextRanges;
+      });
+    }
   };
 
   const clearSelectedJuzs = () => {
@@ -83,7 +132,150 @@ export default function EnrollPage() {
       ...current,
       selectedJuzs: [],
     }));
+    setPartialJuzRanges({});
   };
+
+  const compareAyahRefs = (leftSurahNumber: number, leftVerseNumber: number, rightSurahNumber: number, rightVerseNumber: number) => {
+    if (leftSurahNumber !== rightSurahNumber) {
+      return leftSurahNumber - rightSurahNumber;
+    }
+
+    return leftVerseNumber - rightVerseNumber;
+  };
+
+  const getJuzSurahs = (juzNumber: number) => {
+    const bounds = getJuzBounds(juzNumber);
+    if (!bounds) {
+      return [];
+    }
+
+    return SURAHS.filter((surah) => surah.number >= bounds.startSurahNumber && surah.number <= bounds.endSurahNumber);
+  };
+
+  const getAyahLimitsForJuz = (juzNumber: number, surahNumber: number) => {
+    const bounds = getJuzBounds(juzNumber);
+    const surah = SURAHS.find((item) => item.number === surahNumber);
+
+    if (!bounds || !surah) {
+      return { min: 1, max: 1 };
+    }
+
+    return {
+      min: surahNumber === bounds.startSurahNumber ? bounds.startVerseNumber : 1,
+      max: surahNumber === bounds.endSurahNumber ? bounds.endVerseNumber : surah.verseCount,
+    };
+  };
+
+  const clampAyahNumber = (juzNumber: number, surahNumber: number, ayahNumber: number) => {
+    const limits = getAyahLimitsForJuz(juzNumber, surahNumber);
+    return Math.max(limits.min, Math.min(limits.max, ayahNumber));
+  };
+
+  const openPartialRangeDialog = (juzNumber: number) => {
+    const bounds = getJuzBounds(juzNumber);
+    if (!bounds) {
+      return;
+    }
+
+    const existingRange = partialJuzRanges[juzNumber];
+
+    setActivePartialJuz(juzNumber);
+    setPartialRangeDraft(existingRange ? {
+      fromSurahNumber: existingRange.fromSurahNumber,
+      fromVerseNumber: existingRange.fromVerseNumber,
+      toSurahNumber: existingRange.toSurahNumber,
+      toVerseNumber: existingRange.toVerseNumber,
+    } : {
+      fromSurahNumber: bounds.startSurahNumber,
+      fromVerseNumber: bounds.startVerseNumber,
+      toSurahNumber: bounds.endSurahNumber,
+      toVerseNumber: bounds.endVerseNumber,
+    });
+    setIsPartialRangeDialogOpen(true);
+  };
+
+  const closePartialRangeDialog = (open: boolean) => {
+    setIsPartialRangeDialogOpen(open);
+
+    if (!open) {
+      setActivePartialJuz(null);
+      setPartialRangeDraft(null);
+    }
+  };
+
+  const handleJuzCircleInteraction = (juzNumber: number) => {
+    const currentTimer = tapTimersRef.current[juzNumber];
+    if (currentTimer) {
+      window.clearTimeout(currentTimer);
+      tapTimersRef.current[juzNumber] = undefined;
+      openPartialRangeDialog(juzNumber);
+      return;
+    }
+
+    tapTimersRef.current[juzNumber] = window.setTimeout(() => {
+      toggleJuzSelection(juzNumber);
+      tapTimersRef.current[juzNumber] = undefined;
+    }, DOUBLE_TAP_DELAY_MS);
+  };
+
+  const savePartialRangeSelection = () => {
+    if (!activePartialJuz || !partialRangeDraft) {
+      return;
+    }
+
+    if (
+      compareAyahRefs(
+        partialRangeDraft.fromSurahNumber,
+        partialRangeDraft.fromVerseNumber,
+        partialRangeDraft.toSurahNumber,
+        partialRangeDraft.toVerseNumber,
+      ) > 0
+    ) {
+      toast({ title: "يجب أن يكون المدى من البداية إلى النهاية بشكل صحيح", variant: "destructive" });
+      return;
+    }
+
+    setPartialJuzRanges((current) => ({
+      ...current,
+      [activePartialJuz]: {
+        juzNumber: activePartialJuz,
+        fromSurahNumber: partialRangeDraft.fromSurahNumber,
+        fromVerseNumber: partialRangeDraft.fromVerseNumber,
+        toSurahNumber: partialRangeDraft.toSurahNumber,
+        toVerseNumber: partialRangeDraft.toVerseNumber,
+      },
+    }));
+    setFormData((current) => ({
+      ...current,
+      selectedJuzs: current.selectedJuzs.includes(activePartialJuz)
+        ? current.selectedJuzs
+        : [...current.selectedJuzs, activePartialJuz].sort((left, right) => left - right),
+    }));
+    closePartialRangeDialog(false);
+  };
+
+  const activeJuzSurahs = useMemo(
+    () => (activePartialJuz ? getJuzSurahs(activePartialJuz) : []),
+    [activePartialJuz],
+  );
+
+  const activeFromAyahs = useMemo(() => {
+    if (!activePartialJuz || !partialRangeDraft) {
+      return [] as number[];
+    }
+
+    const limits = getAyahLimitsForJuz(activePartialJuz, partialRangeDraft.fromSurahNumber);
+    return Array.from({ length: limits.max - limits.min + 1 }, (_, index) => limits.min + index);
+  }, [activePartialJuz, partialRangeDraft]);
+
+  const activeToAyahs = useMemo(() => {
+    if (!activePartialJuz || !partialRangeDraft) {
+      return [] as number[];
+    }
+
+    const limits = getAyahLimitsForJuz(activePartialJuz, partialRangeDraft.toSurahNumber);
+    return Array.from({ length: limits.max - limits.min + 1 }, (_, index) => limits.min + index);
+  }, [activePartialJuz, partialRangeDraft]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,13 +287,14 @@ export default function EnrollPage() {
 
     try {
       const contiguousRange = getContiguousSelectedJuzRange(formData.selectedJuzs);
+      const memorizedAmount = serializedPartialJuzRanges || (contiguousRange ? `${contiguousRange.fromJuz}-${contiguousRange.toJuz}` : "");
       const { error } = await supabase.from("enrollment_requests").insert([
         {
           full_name: formData.fullName,
           guardian_phone: formData.guardianPhone,
           id_number: formData.idNumber,
           educational_stage: formData.educationalStage,
-          memorized_amount: contiguousRange ? `${contiguousRange.fromJuz}-${contiguousRange.toJuz}` : "",
+          memorized_amount: memorizedAmount,
           selected_juzs: formData.selectedJuzs,
         },
       ]);
@@ -116,7 +309,9 @@ export default function EnrollPage() {
         educationalStage: "",
         selectedJuzs: [],
       });
+      setPartialJuzRanges({});
       setIsMemorizedDialogOpen(false);
+      closePartialRangeDialog(false);
       setIsSuccess(true);
       setTimeout(() => setIsSuccess(false), 3000);
       // Optionally redirect or show a success message
@@ -249,7 +444,7 @@ export default function EnrollPage() {
                   <button
                     type="button"
                     onClick={() => setIsMemorizedDialogOpen(true)}
-                    className="flex h-12 w-full items-center justify-between rounded-lg border border-[#3453a7]/40 bg-[#fcfbf9] px-4 text-base text-[#20335f] transition-colors hover:bg-[#f8f2e7]"
+                    className="flex h-12 w-full items-center justify-between rounded-lg border border-[#3453a7]/40 bg-white px-4 text-base text-[#20335f] transition-colors hover:bg-white"
                   >
                     <span>{formData.selectedJuzs.length === 0 ? "لا يوجد حفظ سابق" : memorizedSummary}</span>
                     <ChevronDown className="h-4 w-4 text-[#b88a2c]" />
@@ -284,61 +479,170 @@ export default function EnrollPage() {
       <Footer />
 
       <Dialog open={isMemorizedDialogOpen} onOpenChange={setIsMemorizedDialogOpen}>
-        <DialogContent className="max-w-[92vw] sm:max-w-[620px] rounded-2xl border-[#3453a7]/30 p-0" dir="rtl">
-          <DialogHeader className="border-b border-[#3453a7]/20 bg-[#fffcf6] px-5 py-4 text-right">
+        <DialogContent className="max-w-[92vw] sm:max-w-[480px] rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,#ffffff_0%,#fbfdff_100%)] p-0 shadow-[0_26px_80px_rgba(18,37,84,0.14)]" dir="rtl">
+          <DialogHeader className="border-b border-[#3453a7]/8 bg-transparent px-5 py-4 text-right">
             <DialogTitle className="text-right text-lg font-bold text-[#20335f]">اختيار المحفوظ</DialogTitle>
-            <DialogDescription className="text-right text-sm text-gray-500">
-              اختر الأجزاء التي يحفظها الطالب، حتى لو كانت متفرقة.
+            <DialogDescription className="mt-1 text-right text-sm leading-7 text-[#60708f]">
+              ضغطة واحدة تعني الجزء كامل، وضغطتان تعني بعض الجزء.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 px-5 py-4">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-semibold text-[#20335f]">
-                {formData.selectedJuzs.length === 0 ? "لا يوجد حفظ سابق" : memorizedSummary}
-              </p>
-              {formData.selectedJuzs.length > 0 && (
-                <button
-                  type="button"
-                  onClick={clearSelectedJuzs}
-                  className="text-xs font-semibold text-red-600 transition-colors hover:text-red-700"
-                >
-                  مسح التحديد
-                </button>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="space-y-4 px-5 pb-5 pt-3">
+              <div className="grid grid-cols-4 justify-items-center gap-x-1.5 gap-y-2 sm:grid-cols-5">
               {ALL_JUZS.map((juzNumber) => {
-                const isSelected = formData.selectedJuzs.includes(juzNumber);
+                const isSelected = formData.selectedJuzs.includes(juzNumber)
 
                 return (
-                  <label
+                  <button
+                    type="button"
                     key={juzNumber}
-                    className={`plan-history-checkbox w-full justify-between rounded-2xl border px-4 py-3 text-[#1a2332] transition-colors ${isSelected ? "border-[#3453a7] bg-[#fff7e7]" : "border-gray-200 bg-white hover:border-[#3453a7]/45"}`}
+                    onClick={() => handleJuzCircleInteraction(juzNumber)}
+                    aria-pressed={isSelected}
+                    aria-label={`الجزء ${juzNumber}`}
+                    className={`flex h-13 w-13 items-center justify-center rounded-full border text-[15px] font-black transition-all duration-300 ease-out ${isSelected ? "border-[#3453a7] bg-[#3453a7] text-white shadow-[0_10px_22px_rgba(52,83,167,0.24)] scale-[1.02]" : "border-[#d9e2f3] bg-white text-[#20335f] hover:border-[#3453a7]/40 hover:bg-[#f8fbff] hover:shadow-[0_6px_18px_rgba(52,83,167,0.08)]"}`}
                   >
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => toggleJuzSelection(juzNumber)}
-                    />
-                    <span className="plan-history-checkbox__label text-base font-bold leading-none">{juzNumber}</span>
-                    <span className="plan-history-checkbox__mark" aria-hidden="true" />
-                  </label>
-                );
+                    {juzNumber}
+                  </button>
+                )
               })}
-            </div>
+              </div>
 
-            <div className="flex justify-end">
+            <div className="flex justify-end pt-1">
               <button
                 type="button"
                 onClick={() => setIsMemorizedDialogOpen(false)}
-                className="h-11 rounded-xl bg-[#3453a7] px-5 text-sm font-semibold text-white transition-colors hover:bg-[#c99743]"
+                className="h-11 rounded-full bg-[#3453a7] px-6 text-sm font-semibold text-white transition-all duration-300 hover:bg-[#28448e] hover:shadow-[0_12px_24px_rgba(52,83,167,0.22)]"
               >
                 تم
               </button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isPartialRangeDialogOpen} onOpenChange={closePartialRangeDialog}>
+        <DialogContent className="max-w-[92vw] sm:max-w-[390px] rounded-[28px] border border-black/15 bg-[linear-gradient(180deg,#ffffff_0%,#fcfdff_100%)] p-0 shadow-[0_24px_60px_rgba(18,37,84,0.12)]" dir="rtl">
+          <DialogHeader className="border-b border-black/8 bg-transparent px-5 py-4 text-right">
+            <DialogTitle className="text-right text-lg font-bold text-[#20335f]">الجزء {activePartialJuz || ""}</DialogTitle>
+          </DialogHeader>
+
+          {partialRangeDraft && activePartialJuz ? (
+            <div className="space-y-4 px-5 py-5">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <div className="text-sm font-bold text-[#20335f]">من</div>
+                  <Select
+                    value={String(partialRangeDraft.fromSurahNumber)}
+                    onValueChange={(value) => {
+                      const nextSurahNumber = Number(value);
+                      const nextVerseNumber = clampAyahNumber(activePartialJuz, nextSurahNumber, partialRangeDraft.fromVerseNumber);
+                      setPartialRangeDraft((current) => current ? {
+                        ...current,
+                        fromSurahNumber: nextSurahNumber,
+                        fromVerseNumber: nextVerseNumber,
+                        ...(compareAyahRefs(nextSurahNumber, nextVerseNumber, current.toSurahNumber, current.toVerseNumber) > 0
+                          ? { toSurahNumber: nextSurahNumber, toVerseNumber: nextVerseNumber }
+                          : {}),
+                      } : current);
+                    }}
+                  >
+                    <SelectTrigger className="h-11 w-full rounded-2xl border-black/20 bg-white text-sm font-semibold text-[#20335f] shadow-none focus-visible:border-black/30 focus-visible:ring-black/5">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent dir="rtl" className="max-h-64 rounded-2xl border border-black/15 bg-white shadow-[0_18px_38px_rgba(15,23,42,0.10)]">
+                      {activeJuzSurahs.map((surah) => (
+                        <SelectItem key={`from-surah-${surah.number}`} value={String(surah.number)} className="text-right text-sm focus:bg-slate-50">
+                          {surah.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={String(partialRangeDraft.fromVerseNumber)}
+                    onValueChange={(value) => {
+                      const nextVerseNumber = Number(value);
+                      setPartialRangeDraft((current) => current ? {
+                        ...current,
+                        fromVerseNumber: nextVerseNumber,
+                        ...(compareAyahRefs(current.fromSurahNumber, nextVerseNumber, current.toSurahNumber, current.toVerseNumber) > 0
+                          ? { toSurahNumber: current.fromSurahNumber, toVerseNumber: nextVerseNumber }
+                          : {}),
+                      } : current);
+                    }}
+                  >
+                    <SelectTrigger className="h-11 w-full rounded-2xl border-black/20 bg-white text-sm font-semibold text-[#20335f] shadow-none focus-visible:border-black/30 focus-visible:ring-black/5">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent dir="rtl" className="max-h-64 rounded-2xl border border-black/15 bg-white shadow-[0_18px_38px_rgba(15,23,42,0.10)]">
+                      {activeFromAyahs.map((ayahNumber) => (
+                        <SelectItem key={`from-ayah-${ayahNumber}`} value={String(ayahNumber)} className="text-right text-sm focus:bg-slate-50">
+                          {ayahNumber}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="text-sm font-bold text-[#20335f]">إلى</div>
+                  <Select
+                    value={String(partialRangeDraft.toSurahNumber)}
+                    onValueChange={(value) => {
+                      const nextSurahNumber = Number(value);
+                      const nextVerseNumber = clampAyahNumber(activePartialJuz, nextSurahNumber, partialRangeDraft.toVerseNumber);
+                      setPartialRangeDraft((current) => current ? {
+                        ...current,
+                        toSurahNumber: nextSurahNumber,
+                        toVerseNumber: nextVerseNumber,
+                      } : current);
+                    }}
+                  >
+                    <SelectTrigger className="h-11 w-full rounded-2xl border-black/20 bg-white text-sm font-semibold text-[#20335f] shadow-none focus-visible:border-black/30 focus-visible:ring-black/5">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent dir="rtl" className="max-h-64 rounded-2xl border border-black/15 bg-white shadow-[0_18px_38px_rgba(15,23,42,0.10)]">
+                      {activeJuzSurahs.map((surah) => (
+                        <SelectItem key={`to-surah-${surah.number}`} value={String(surah.number)} className="text-right text-sm focus:bg-slate-50">
+                          {surah.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={String(partialRangeDraft.toVerseNumber)}
+                    onValueChange={(value) => {
+                      const nextVerseNumber = Number(value);
+                      setPartialRangeDraft((current) => current ? {
+                        ...current,
+                        toVerseNumber: nextVerseNumber,
+                      } : current);
+                    }}
+                  >
+                    <SelectTrigger className="h-11 w-full rounded-2xl border-black/20 bg-white text-sm font-semibold text-[#20335f] shadow-none focus-visible:border-black/30 focus-visible:ring-black/5">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent dir="rtl" className="max-h-64 rounded-2xl border border-black/15 bg-white shadow-[0_18px_38px_rgba(15,23,42,0.10)]">
+                      {activeToAyahs.map((ayahNumber) => (
+                        <SelectItem key={`to-ayah-${ayahNumber}`} value={String(ayahNumber)} className="text-right text-sm focus:bg-slate-50">
+                          {ayahNumber}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-1">
+                <button
+                  type="button"
+                  onClick={savePartialRangeSelection}
+                  className="h-11 rounded-full bg-[#3453a7] px-6 text-sm font-semibold text-white transition-all duration-300 hover:bg-[#28448e] hover:shadow-[0_12px_24px_rgba(52,83,167,0.22)]"
+                >
+                  تم
+                </button>
+              </div>
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
     </div>

@@ -323,6 +323,7 @@ export async function POST(request: Request) {
 		const portionNumber = body.portion_number === null || body.portion_number === undefined || body.portion_number === ""
 			? (body.juz_number === null || body.juz_number === undefined || body.juz_number === "" ? null : Number(body.juz_number))
 			: Number(body.portion_number)
+		const testedByName = String(body.tested_by_name || "").trim() || session.name
 		const alertsCount = parseCount(body.alerts_count)
 		const mistakesCount = parseCount(body.mistakes_count)
 		const notes = String(body.notes || "").trim() || null
@@ -351,6 +352,10 @@ export async function POST(request: Request) {
 
 		if (portionNumber === null) {
 			return NextResponse.json({ error: portionType === "hizb" ? "اختر الحزب المختبر من القائمة" : "اختر الجزء المختبر من القائمة" }, { status: 400 })
+		}
+
+		if (!testedByName) {
+			return NextResponse.json({ error: "اسم المختبر مطلوب" }, { status: 400 })
 		}
 
 		const activePlanProgress = await getStudentActivePlanProgress(supabase, student.id)
@@ -421,7 +426,7 @@ export async function POST(request: Request) {
 			passed: score.passed,
 			notes,
 			tested_by_user_id: session.id,
-			tested_by_name: session.name,
+			tested_by_name: testedByName,
 			tested_by_role: session.role,
 		}
 

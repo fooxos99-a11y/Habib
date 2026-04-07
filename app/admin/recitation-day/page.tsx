@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useEffect, useMemo, useState, type ComponentPropsWithoutRef } from "react"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
@@ -72,12 +73,15 @@ type StudentRow = {
 type DayRow = {
   id: string
   recitation_date: string
+  recitation_end_date?: string | null
   status: string
 }
 
 type ArchiveDayRow = {
   id: string
   recitation_date: string
+  recitation_end_date?: string | null
+  halaqah?: string | null
 }
 
 type NotificationTemplatesForm = {
@@ -101,6 +105,19 @@ function getStatusLabel(status?: string | null) {
 
 function getTodayValue() {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date())
+}
+
+function getRecitationDateRangeLabel(startDate?: string | null, endDate?: string | null) {
+  const normalizedStartDate = String(startDate || "").trim()
+  const normalizedEndDate = String(endDate || "").trim() || normalizedStartDate
+
+  if (!normalizedStartDate) {
+    return "-"
+  }
+
+  return normalizedStartDate === normalizedEndDate
+    ? normalizedStartDate
+    : `من ${normalizedStartDate} إلى ${normalizedEndDate}`
 }
 
 function StyledSelect({ className = "", children, ...props }: ComponentPropsWithoutRef<"select">) {
@@ -213,7 +230,8 @@ export default function AdminRecitationDayPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isStarting, setIsStarting] = useState(false)
   const [isArchiving, setIsArchiving] = useState(false)
-  const [recitationDate, setRecitationDate] = useState(getTodayValue())
+  const [recitationStartDate, setRecitationStartDate] = useState(getTodayValue())
+  const [recitationEndDate, setRecitationEndDate] = useState(getTodayValue())
   const [startTargetHalaqah, setStartTargetHalaqah] = useState("all")
   const [selectedHalaqah, setSelectedHalaqah] = useState("all")
   const [currentDay, setCurrentDay] = useState<DayRow | null>(null)
@@ -245,6 +263,7 @@ export default function AdminRecitationDayPage() {
   const [isSavingLifecycleTemplates, setIsSavingLifecycleTemplates] = useState(false)
   const [isSavingGradingSettings, setIsSavingGradingSettings] = useState(false)
   const [isTemplatesDialogOpen, setIsTemplatesDialogOpen] = useState(false)
+  const [isStartTemplatesDialogOpen, setIsStartTemplatesDialogOpen] = useState(false)
   const [isGradingSettingsDialogOpen, setIsGradingSettingsDialogOpen] = useState(false)
 
   async function loadNotificationTemplates() {
@@ -405,7 +424,7 @@ export default function AdminRecitationDayPage() {
       }
 
       setSelectedArchiveDayId(dayId)
-      setSelectedArchiveDate(data.day?.recitation_date || "")
+      setSelectedArchiveDate(getRecitationDateRangeLabel(data.day?.recitation_date, data.day?.recitation_end_date))
       setArchiveStudents(data.students || [])
       setArchiveHalaqahOptions(data.halaqahOptions || [])
       setSelectedArchiveHalaqah("all")
@@ -441,7 +460,7 @@ export default function AdminRecitationDayPage() {
   async function deleteArchiveDay(day: ArchiveDayRow) {
     const confirmed = await confirmDialog({
       title: "حذف الأرشيف",
-      description: `سيتم حذف أرشيف يوم السرد بتاريخ ${day.recitation_date} نهائيًا. هل تريد المتابعة؟`,
+      description: `سيتم حذف أرشيف يوم السرد بتاريخ ${getRecitationDateRangeLabel(day.recitation_date, day.recitation_end_date)} نهائيًا. هل تريد المتابعة؟`,
       confirmText: "حذف",
       cancelText: "إلغاء",
     })
@@ -467,7 +486,7 @@ export default function AdminRecitationDayPage() {
       }
 
       await loadArchiveDays()
-      toast({ title: "تم حذف الأرشيف", description: `تم حذف أرشيف ${day.recitation_date}` })
+      toast({ title: "تم حذف الأرشيف", description: `تم حذف أرشيف ${getRecitationDateRangeLabel(day.recitation_date, day.recitation_end_date)}` })
     } catch (error) {
       toast({ title: "تعذر حذف الأرشيف", description: error instanceof Error ? error.message : "حدث خطأ غير متوقع", variant: "destructive" })
     } finally {
@@ -476,6 +495,16 @@ export default function AdminRecitationDayPage() {
   }
 
   async function handleStartDay() {
+    if (!recitationStartDate || !recitationEndDate) {
+      toast({ title: "البيانات غير مكتملة", description: "حدد تاريخ البداية والنهاية أولاً", variant: "destructive" })
+      return
+    }
+
+    if (recitationEndDate < recitationStartDate) {
+      toast({ title: "نطاق غير صالح", description: "تاريخ النهاية يجب أن يكون مساويًا أو بعد تاريخ البداية", variant: "destructive" })
+      return
+    }
+
     const templatesSaved = await saveLifecycleNotificationTemplates()
     if (!templatesSaved) {
       return
@@ -487,7 +516,8 @@ export default function AdminRecitationDayPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          recitationDate,
+          recitationStartDate,
+          recitationEndDate,
           halaqah: startTargetHalaqah === "all" ? null : startTargetHalaqah,
         }),
       })
@@ -502,7 +532,7 @@ export default function AdminRecitationDayPage() {
       setStartTargetHalaqah("all")
       setIsStartDialogOpen(false)
       await loadArchiveDays()
-      toast({ title: "تم بدء يوم السرد", description: `تم إنشاء يوم سرد بتاريخ ${recitationDate}` })
+      toast({ title: "تم بدء يوم السرد", description: `تم إنشاء يوم سرد ${getRecitationDateRangeLabel(recitationStartDate, recitationEndDate)}` })
     } catch (error) {
       toast({ title: "تعذر بدء يوم السرد", description: error instanceof Error ? error.message : "حدث خطأ غير متوقع", variant: "destructive" })
     } finally {
@@ -703,10 +733,10 @@ export default function AdminRecitationDayPage() {
     const title = templateKey === "start" ? "رسائل بدء يوم السرد" : "رسائل إنهاء يوم السرد"
 
     return (
-      <div className="space-y-4 rounded-[24px] border border-[#e6edf6] bg-[#fbfdff] p-4">
+      <div className="space-y-4 rounded-[24px] border border-[#e6edf6] bg-[#fbfdff] p-4 sm:p-5">
         <div className="flex items-start justify-between gap-3 text-right">
           <div>
-            <div className="text-base font-black text-[#1a2332]">{title}</div>
+            <div className="text-base font-black text-[#1a2332] sm:text-lg">{title}</div>
           </div>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -720,7 +750,7 @@ export default function AdminRecitationDayPage() {
           </Tooltip>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2 text-right">
             <div className="text-sm font-bold text-[#1a2332]">تنبيه الطالب داخل المنصة</div>
             <textarea
@@ -731,7 +761,7 @@ export default function AdminRecitationDayPage() {
                   [templateKey]: { ...current[templateKey], app: event.target.value },
                 }))
               }
-              className="min-h-[150px] w-full rounded-[22px] border border-[#d8e4fb] px-4 py-3 text-sm outline-none"
+              className="min-h-[132px] w-full rounded-[22px] border border-[#d8e4fb] px-4 py-3 text-sm outline-none transition focus:border-[#3453a7]"
             />
           </div>
           <div className="space-y-2 text-right">
@@ -744,7 +774,7 @@ export default function AdminRecitationDayPage() {
                   [templateKey]: { ...current[templateKey], whatsapp: event.target.value },
                 }))
               }
-              className="min-h-[150px] w-full rounded-[22px] border border-[#d8e4fb] px-4 py-3 text-sm outline-none"
+              className="min-h-[132px] w-full rounded-[22px] border border-[#d8e4fb] px-4 py-3 text-sm outline-none transition focus:border-[#3453a7]"
             />
           </div>
         </div>
@@ -758,7 +788,7 @@ export default function AdminRecitationDayPage() {
       <div className="min-h-screen bg-[#f8fbff]" dir="rtl">
         <Header />
         <main className="flex min-h-[70vh] items-center justify-center"><SiteLoader size="md" color="#3453a7" /></main>
-        <Footer />
+      <Footer />
       </div>
     )
   }
@@ -779,12 +809,16 @@ export default function AdminRecitationDayPage() {
           </CardHeader>
           <CardContent>
             {!currentDay ? (
-              <div className="grid gap-4 md:grid-cols-[220px_auto] md:items-end md:justify-between">
+              <div className="grid gap-4 md:grid-cols-[minmax(0,220px)_minmax(0,220px)_auto] md:items-end md:justify-between">
                 <div className="space-y-2 text-right">
-                  <div className="text-sm font-bold text-[#1a2332]">تاريخ السرد</div>
-                  <Input type="date" value={recitationDate} onChange={(event) => setRecitationDate(event.target.value)} className="border-[#d8e4fb]" />
+                  <div className="text-sm font-bold text-[#1a2332]">من</div>
+                  <Input type="date" value={recitationStartDate} max={recitationEndDate || undefined} onChange={(event) => setRecitationStartDate(event.target.value)} className="border-[#d8e4fb]" />
                 </div>
-                <Button onClick={() => setIsStartDialogOpen(true)} disabled={!recitationDate} className="h-11 rounded-full bg-[#3453a7] px-6 text-white hover:bg-[#28448e]"><PlayCircle className="me-2 h-4 w-4" />بدء يوم السرد</Button>
+                <div className="space-y-2 text-right">
+                  <div className="text-sm font-bold text-[#1a2332]">إلى</div>
+                  <Input type="date" value={recitationEndDate} min={recitationStartDate || undefined} onChange={(event) => setRecitationEndDate(event.target.value)} className="border-[#d8e4fb]" />
+                </div>
+                <Button onClick={() => setIsStartDialogOpen(true)} disabled={!recitationStartDate || !recitationEndDate} className="h-11 rounded-full bg-[#3453a7] px-6 text-white hover:bg-[#28448e]"><PlayCircle className="me-2 h-4 w-4" />بدء يوم السرد</Button>
               </div>
             ) : (
               <div className="space-y-5">
@@ -797,16 +831,13 @@ export default function AdminRecitationDayPage() {
                     <Button type="button" variant="outline" onClick={() => setIsGradingSettingsDialogOpen(true)} className="h-11 rounded-full border-[#d8e4fb] px-6 text-[#3453a7] hover:bg-[#f5f8ff]">
                       إعدادات التقييم
                     </Button>
-                    <Button type="button" variant="outline" onClick={() => setIsTemplatesDialogOpen(true)} className="h-11 rounded-full border-[#d8e4fb] px-6 text-[#3453a7] hover:bg-[#f5f8ff]">
-                      قوالب التنبيه
-                    </Button>
                     <Button onClick={() => setIsArchiveConfirmOpen(true)} disabled={isArchiving} className="h-11 rounded-full bg-[#0f766e] px-6 text-white hover:bg-[#115e59]"><FileCheck2 className="me-2 h-4 w-4" />{isArchiving ? "جاري الإنهاء..." : "إنهاء يوم السرد"}</Button>
                   </div>
                 </div>
                 <div className="grid gap-3 md:grid-cols-3">
-                  <div className="rounded-[22px] border border-[#e8eef7] bg-[#fafcff] px-4 py-4 text-right"><div className="text-xs text-[#64748b]">تاريخ السرد</div><div className="mt-2 text-2xl font-black text-[#1a2332]">{currentDay.recitation_date}</div></div>
+                  <div className="rounded-[22px] border border-[#e8eef7] bg-[#fafcff] px-4 py-4 text-right"><div className="text-xs text-[#64748b]">تاريخ السرد</div><div className="mt-2 text-2xl font-black text-[#1a2332]">{getRecitationDateRangeLabel(currentDay.recitation_date, currentDay.recitation_end_date)}</div></div>
                   <div className="rounded-[22px] border border-[#e8eef7] bg-[#fafcff] px-4 py-4 text-right"><div className="text-xs text-[#64748b]">عدد الطلاب</div><div className="mt-2 text-2xl font-black text-[#1a2332]">{students.length}</div></div>
-                  <div className="rounded-[22px] border border-[#e8eef7] bg-[#fafcff] px-4 py-4 text-right"><div className="text-xs text-[#64748b]">تم تسميعهم</div><div className="mt-2 text-2xl font-black text-[#1a2332]">{listenedCount}</div></div>
+                  <div className="rounded-[22px] border border-[#e8eef7] bg-[#fafcff] px-4 py-4 text-right"><div className="text-xs text-[#64748b]">الطلاب المنتهين</div><div className="mt-2 text-2xl font-black text-[#1a2332]">{listenedCount}</div></div>
                 </div>
                 <div className="overflow-hidden rounded-[24px] border border-[#ebeff5] bg-white">
                   <Table>
@@ -842,105 +873,38 @@ export default function AdminRecitationDayPage() {
                 </div>
               </div>
             )}
+
+            <div className="mt-6 flex justify-start border-t border-[#e8eef6] pt-6">
+              <Link href="/admin/recitation-day/archive" className="inline-flex h-11 items-center justify-center rounded-full bg-[#3453a7] px-6 text-sm font-black text-white transition hover:bg-[#28448e]">
+                الأرشيف
+              </Link>
+            </div>
           </CardContent>
         </Card>
-
-        <div className="grid gap-6 xl:grid-cols-[300px_1fr]">
-          <Card className="rounded-[30px] border-[#dde6f0] bg-white shadow-[0_16px_45px_rgba(15,23,42,0.06)]">
-            <CardHeader className="text-right">
-              <CardTitle className="flex w-full items-center justify-start gap-2 text-xl font-black text-[#1a2332]"><Archive className="h-5 w-5 text-[#3453a7]" /><span>أرشيف السرد</span></CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {archiveDays.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-[#d8e4fb] px-4 py-6 text-center text-sm text-[#64748b]">لا توجد أيام سرد مؤرشفة بعد</div>
-              ) : archiveDays.map((day) => (
-                <div key={day.id} className={`rounded-[22px] border px-4 py-4 transition-all ${selectedArchiveDayId === day.id ? "border-[#3453a7] bg-[#f5f8ff]" : "border-[#e5edf6] bg-white"}`}>
-                  <div className="flex items-start justify-between gap-3">
-                    <button type="button" onClick={() => void loadArchiveDayDetails(day.id)} className="flex-1 text-right">
-                      <div className="text-lg font-black text-[#1a2332]">{day.recitation_date}</div>
-                      <div className="mt-2 text-sm text-[#64748b]">يوم سرد مؤرشف</div>
-                    </button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      onClick={() => void deleteArchiveDay(day)}
-                      disabled={deletingArchiveId === day.id}
-                      className="h-9 w-9 rounded-full p-0 text-[#b91c1c] hover:bg-[#fff1f2] hover:text-[#991b1b]"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-[30px] border-[#dde6f0] bg-white shadow-[0_16px_45px_rgba(15,23,42,0.06)]">
-            <CardHeader className="text-right">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <CardTitle className="text-xl font-black text-[#1a2332]">{selectedArchiveDate ? `تفاصيل سرد ${selectedArchiveDate}` : "اختر يومًا من الأرشيف"}</CardTitle>
-                <StyledSelect value={selectedArchiveHalaqah} onChange={(event) => setSelectedArchiveHalaqah(event.target.value)}>
-                  <option value="all">كل الحلقات</option>
-                  {archiveHalaqahOptions.map((halaqah) => <option key={halaqah} value={halaqah}>{halaqah}</option>)}
-                </StyledSelect>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {isArchiveLoading ? (
-                <div className="flex items-center justify-center py-16"><SiteLoader size="sm" color="#3453a7" /></div>
-              ) : selectedArchiveDayId ? (
-                <div className="overflow-hidden rounded-[24px] border border-[#ebeff5] bg-white">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className={tableHeadClassName}>الطالب</TableHead>
-                        <TableHead className={tableHeadClassName}>الحلقة</TableHead>
-                        <TableHead className={tableHeadClassName}>اسم المعلم</TableHead>
-                        <TableHead className={tableHeadClassName}>حالة السرد</TableHead>
-                        <TableHead className={tableHeadClassName}>المقيّم</TableHead>
-                        <TableHead className={tableHeadClassName}>ملاحظات المقيّم</TableHead>
-                        <TableHead className={tableHeadClassName}>المسمّع</TableHead>
-                        <TableHead className="h-12 w-14 whitespace-nowrap align-middle text-center text-sm font-bold text-[#1a2332]"></TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredArchiveStudents.map((student) => (
-                        <TableRow key={student.id}>
-                          <TableCell className="text-right font-bold">{student.student_name}</TableCell>
-                          <TableCell className="text-right">{student.halaqah || "-"}</TableCell>
-                          <TableCell className="text-right">{student.teacher_name || "-"}</TableCell>
-                          <TableCell className="text-right">{getStatusLabel(student.overall_status)}</TableCell>
-                          <TableCell className="text-right">{student.evaluator_name || "-"}</TableCell>
-                          <TableCell className="max-w-[240px] text-right">{student.notes || "-"}</TableCell>
-                          <TableCell className="max-w-[220px] text-right">{student.heard_amount_text || "-"}</TableCell>
-                          <TableCell className="text-center"><Button type="button" variant="ghost" className="rounded-full px-4 text-[#3453a7]" onClick={() => setArchiveDetailsStudent(student)}>التفاصيل</Button></TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-dashed border-[#d8e4fb] px-4 py-10 text-center text-sm text-[#64748b]">اختر تاريخًا من أرشيف السرد لعرض التفاصيل</div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
       </main>
       <Footer />
 
       <Dialog open={isStartDialogOpen} onOpenChange={setIsStartDialogOpen}>
-        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto" dir="rtl" onOpenAutoFocus={(event) => event.preventDefault()}>
-          <DialogHeader className="text-right">
-            <DialogTitle className="text-right text-xl font-black text-[#1a2332]">{getLifecycleScopeLabel(startTargetHalaqah, "بدء يوم السرد لجميع الطلاب والحلقات", "بدء يوم السرد لحلقة")}</DialogTitle>
-            <DialogDescription className="text-right text-sm leading-7 text-[#526071]">
-              يمكنك بدء يوم السرد لكل الطلاب أو لحلقة محددة وسيتم إشعار الى الطلاب وإلى أولياء الأمور ببدء يوم السرد.
-            </DialogDescription>
+        <DialogContent className="max-h-[88vh] w-[calc(100vw-1.5rem)] max-w-xl overflow-y-auto rounded-[28px] border border-[#dbe5f1] p-0 shadow-[0_24px_70px_rgba(15,23,42,0.14)]" dir="rtl" onOpenAutoFocus={(event) => event.preventDefault()}>
+          <DialogHeader className="border-b border-[#e8eef6] px-4 py-4 text-right sm:px-6">
+            <div className="flex items-center justify-between gap-3">
+              <DialogTitle className="text-right text-lg font-black text-[#1a2332] sm:text-xl">بدء يوم السرد</DialogTitle>
+              <Button type="button" variant="outline" onClick={() => setIsStartTemplatesDialogOpen(true)} className="h-10 rounded-full border-[#d8e4fb] px-4 text-[#3453a7] hover:bg-[#f5f8ff] sm:h-11 sm:px-5">
+                القوالب
+              </Button>
+            </div>
           </DialogHeader>
 
-          <div className="space-y-5 text-right">
-            <div className="space-y-2">
-              <div className="text-sm font-bold text-[#1a2332]">تاريخ السرد</div>
-              <Input type="date" value={recitationDate} onChange={(event) => setRecitationDate(event.target.value)} className="border-[#d8e4fb]" />
+          <div className="space-y-5 px-4 py-5 text-right sm:px-6">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <div className="text-sm font-bold text-[#1a2332]">من</div>
+                <Input type="date" value={recitationStartDate} max={recitationEndDate || undefined} onChange={(event) => setRecitationStartDate(event.target.value)} className="border-[#d8e4fb]" />
+              </div>
+              <div className="space-y-2">
+                <div className="text-sm font-bold text-[#1a2332]">إلى</div>
+                <Input type="date" value={recitationEndDate} min={recitationStartDate || undefined} onChange={(event) => setRecitationEndDate(event.target.value)} className="border-[#d8e4fb]" />
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -951,15 +915,44 @@ export default function AdminRecitationDayPage() {
               </StyledSelect>
             </div>
 
-            {renderLifecycleTemplateFields("start")}
-
             <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-start">
               <Button type="button" variant="outline" onClick={() => setIsStartDialogOpen(false)} className="h-11 rounded-full border-[#d8e4fb] px-6">
                 إلغاء
               </Button>
-              <Button type="button" onClick={handleStartDay} disabled={isStarting || isSavingLifecycleTemplates || !recitationDate} className="h-11 rounded-full bg-[#3453a7] px-6 text-white hover:bg-[#28448e]">
-                <PlayCircle className="me-2 h-4 w-4" />
-                {isStarting ? "جاري البدء..." : isSavingLifecycleTemplates ? "جاري الإرسال" : getLifecycleScopeLabel(startTargetHalaqah, "تأكيد البدء لجميع الطلاب والحلقات", "تأكيد البدء للحلقة")}
+              <Button type="button" onClick={handleStartDay} disabled={isStarting || isSavingLifecycleTemplates || !recitationStartDate || !recitationEndDate} className="h-11 rounded-full bg-[#3453a7] px-6 text-white hover:bg-[#28448e]">
+                {isStarting ? "جاري البدء..." : isSavingLifecycleTemplates ? "جاري الإرسال" : getLifecycleScopeLabel(startTargetHalaqah, "تأكيد البدء", "تأكيد البدء")}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isStartTemplatesDialogOpen} onOpenChange={setIsStartTemplatesDialogOpen}>
+        <DialogContent className="max-h-[88vh] w-[calc(100vw-1.5rem)] max-w-2xl overflow-y-auto rounded-[28px] border border-[#dbe5f1] p-0 shadow-[0_24px_70px_rgba(15,23,42,0.14)]" dir="rtl" onOpenAutoFocus={(event) => event.preventDefault()}>
+          <DialogHeader className="border-b border-[#e8eef6] px-4 py-4 sm:px-6">
+            <DialogTitle className="text-right text-lg font-black text-[#1a2332] sm:text-xl">قوالب بدء يوم السرد</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 px-4 py-5 text-right sm:px-6">
+            {renderLifecycleTemplateFields("start")}
+
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-start">
+              <Button type="button" variant="outline" onClick={() => setIsStartTemplatesDialogOpen(false)} className="h-11 rounded-full border-[#d8e4fb] px-6">
+                إغلاق
+              </Button>
+              <Button
+                type="button"
+                onClick={async () => {
+                  const saved = await saveLifecycleNotificationTemplates()
+                  if (saved) {
+                    setIsStartTemplatesDialogOpen(false)
+                    toast({ title: "تم حفظ القوالب", description: "سيتم استخدام القوالب عند بدء يوم السرد" })
+                  }
+                }}
+                disabled={isSavingLifecycleTemplates}
+                className="h-11 rounded-full bg-[#3453a7] px-6 text-white hover:bg-[#28448e]"
+              >
+                {isSavingLifecycleTemplates ? "جاري الحفظ..." : "حفظ القوالب"}
               </Button>
             </div>
           </div>
@@ -967,30 +960,33 @@ export default function AdminRecitationDayPage() {
       </Dialog>
 
       <Dialog open={isArchiveConfirmOpen} onOpenChange={setIsArchiveConfirmOpen}>
-        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto" dir="rtl" onOpenAutoFocus={(event) => event.preventDefault()}>
-          <DialogHeader className="text-right">
-            <DialogTitle className="text-right text-xl font-black text-[#1a2332]">إنهاء يوم السرد</DialogTitle>
+        <DialogContent className="max-h-[88vh] w-[calc(100vw-1.5rem)] max-w-xl overflow-y-auto rounded-[28px] border border-[#dbe5f1] p-0 shadow-[0_24px_70px_rgba(15,23,42,0.14)]" dir="rtl" onOpenAutoFocus={(event) => event.preventDefault()}>
+          <DialogHeader className="border-b border-[#e8eef6] px-4 py-4 text-right sm:px-6">
+            <div className="flex items-center justify-between gap-3">
+              <DialogTitle className="text-right text-lg font-black text-[#1a2332] sm:text-xl">إنهاء يوم السرد</DialogTitle>
+              <Button type="button" variant="outline" onClick={() => setIsTemplatesDialogOpen(true)} className="h-10 rounded-full border-[#d8e4fb] px-4 text-[#3453a7] hover:bg-[#f5f8ff] sm:h-11 sm:px-5">
+                القوالب
+              </Button>
+            </div>
           </DialogHeader>
 
-          <div className="space-y-4 text-right">
+          <div className="space-y-5 px-4 py-5 text-right sm:px-6">
             <div className="space-y-2">
-              <div className="text-sm font-bold text-[#1a2332]">من تريد إنهاءه؟</div>
+              <div className="text-sm font-bold text-[#1a2332]">نطاق الحلقات</div>
               <StyledSelect value={endTargetHalaqah} onChange={(event) => setEndTargetHalaqah(event.target.value)}>
-                <option value="all">جميع الطلاب والحلقات</option>
+                <option value="all">جميع الحلقات</option>
                 {halaqahOptions.map((halaqah) => <option key={halaqah} value={halaqah}>{halaqah}</option>)}
               </StyledSelect>
             </div>
 
-            <div className="space-y-4">
-              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-start">
-                <Button type="button" variant="outline" onClick={() => setIsArchiveConfirmOpen(false)} className="h-11 rounded-full border-[#d8e4fb] px-6">
-                  تراجع
-                </Button>
-                <Button type="button" onClick={handleArchiveDay} disabled={isArchiving} className="h-11 rounded-full bg-[#0f766e] px-6 text-white hover:bg-[#115e59]">
-                  <FileCheck2 className="me-2 h-4 w-4" />
-                  {isArchiving ? "جاري الإنهاء..." : "تأكيد الإنهاء"}
-                </Button>
-              </div>
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-start">
+              <Button type="button" variant="outline" onClick={() => setIsArchiveConfirmOpen(false)} className="h-11 rounded-full border-[#d8e4fb] px-6">
+                إلغاء
+              </Button>
+              <Button type="button" onClick={handleArchiveDay} disabled={isArchiving} className="h-11 rounded-full bg-[#0f766e] px-6 text-white hover:bg-[#115e59]">
+                <FileCheck2 className="me-2 h-4 w-4" />
+                {isArchiving ? "جاري الإنهاء..." : "تأكيد الإنهاء"}
+              </Button>
             </div>
           </div>
         </DialogContent>

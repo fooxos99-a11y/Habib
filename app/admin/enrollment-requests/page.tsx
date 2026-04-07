@@ -25,6 +25,7 @@ import {
   formatEnrollmentMemorizedAmount,
   getNeedsMasteryJuzNumbers,
   getPassedJuzNumbers,
+  parseEnrollmentPartialJuzRanges,
   getReviewRequestedJuzNumbers,
   getTestableJuzNumbers,
   isContiguousJuzSelection,
@@ -34,6 +35,10 @@ import {
 } from "@/lib/enrollment-test-utils"
 
 const TEST_RESULTS_STORAGE_PREFIX = "enrollment-test-results:";
+const ACCEPT_WHATSAPP_MESSAGE_STORAGE_KEY = "enrollment-accept-whatsapp-message";
+const REJECT_WHATSAPP_MESSAGE_STORAGE_KEY = "enrollment-reject-whatsapp-message";
+const DEFAULT_ACCEPT_WHATSAPP_MESSAGE = "نفيدكم بقبول ابنكم في المجمع";
+const DEFAULT_REJECT_WHATSAPP_MESSAGE = "نفيدكم برفض ابنكم في المجمع";
 
 function getTestResultsStorageKey(requestId: string) {
   return `${TEST_RESULTS_STORAGE_PREFIX}${requestId}`;
@@ -81,6 +86,22 @@ function clearSavedTestResults(requestId: string) {
   window.localStorage.removeItem(getTestResultsStorageKey(requestId));
 }
 
+function loadEnrollmentWhatsAppMessage(storageKey: string, fallbackMessage: string) {
+  if (typeof window === "undefined") return fallbackMessage;
+
+  const storedMessage = window.localStorage.getItem(storageKey)?.trim();
+  return storedMessage || fallbackMessage;
+}
+
+function saveEnrollmentWhatsAppMessage(storageKey: string, message: string) {
+  if (typeof window === "undefined") return;
+
+  const trimmedMessage = message.trim();
+  if (!trimmedMessage) return;
+
+  window.localStorage.setItem(storageKey, trimmedMessage);
+}
+
 function buildDefaultTestResults(juzNumbers: number[], currentResults?: Record<number, EnrollmentJuzTestStatus>) {
   return juzNumbers.reduce<Record<number, EnrollmentJuzTestStatus>>((accumulator, juzNumber) => {
     accumulator[juzNumber] = currentResults?.[juzNumber] || "pass"
@@ -89,12 +110,6 @@ function buildDefaultTestResults(juzNumbers: number[], currentResults?: Record<n
 }
 
 function formatMemorizedDisplay(amount?: string | null, selectedJuzs?: number[] | null) {
-  const normalizedSelectedJuzs = normalizeSelectedJuzs(selectedJuzs)
-
-  if (normalizedSelectedJuzs.length > 0) {
-    return `الأجزاء ${normalizedSelectedJuzs.join(",")}`
-  }
-
   return formatEnrollmentMemorizedAmount(amount, selectedJuzs)
 }
 
@@ -168,7 +183,9 @@ export default function EnrollmentRequestsPage() {
   const [isStatusLoading, setIsStatusLoading] = useState(false);
   const [circles, setCircles] = useState<any[]>([]);
   const [acceptRequest, setAcceptRequest] = useState<EnrollmentRequest | null>(null);
+  const [rejectRequest, setRejectRequest] = useState<EnrollmentRequest | null>(null);
   const [isAccepting, setIsAccepting] = useState(false);
+  const [isRejecting, setIsRejecting] = useState(false);
   const [isTestDialogOpen, setIsTestDialogOpen] = useState(false);
   const [isReviewDialogOpen, setIsReviewDialogOpen] = useState(false);
   const [hasReviewedTest, setHasReviewedTest] = useState(false);
@@ -176,6 +193,8 @@ export default function EnrollmentRequestsPage() {
   const [juzReviewResults, setJuzReviewResults] = useState<Record<number, EnrollmentJuzReviewStatus>>({});
   const [draftJuzReviewResults, setDraftJuzReviewResults] = useState<Record<number, EnrollmentJuzReviewStatus>>({});
   const [isReviewInfoOpen, setIsReviewInfoOpen] = useState(false);
+  const [acceptWhatsAppMessage, setAcceptWhatsAppMessage] = useState(DEFAULT_ACCEPT_WHATSAPP_MESSAGE);
+  const [rejectWhatsAppMessage, setRejectWhatsAppMessage] = useState(DEFAULT_REJECT_WHATSAPP_MESSAGE);
   const [acceptForm, setAcceptForm] = useState({
     name: "",
     phone: "",
@@ -241,6 +260,7 @@ export default function EnrollmentRequestsPage() {
       : filterReviewResultsByReviewRequestedJuzs(persistedTestResults, savedTestResults?.juzReviewResults);
 
     setAcceptRequest(req);
+    setAcceptWhatsAppMessage(loadEnrollmentWhatsAppMessage(ACCEPT_WHATSAPP_MESSAGE_STORAGE_KEY, DEFAULT_ACCEPT_WHATSAPP_MESSAGE));
     setAcceptForm({
       name: req.full_name,
       phone: req.guardian_phone,
@@ -259,10 +279,42 @@ export default function EnrollmentRequestsPage() {
     setIsReviewDialogOpen(false);
   };
 
+  const handleOpenReject = (req: EnrollmentRequest) => {
+    setRejectRequest(req);
+    setRejectWhatsAppMessage(loadEnrollmentWhatsAppMessage(REJECT_WHATSAPP_MESSAGE_STORAGE_KEY, DEFAULT_REJECT_WHATSAPP_MESSAGE));
+  };
+
+  const sendGuardianWhatsAppMessage = async (phoneNumber: string, message: string) => {
+    const response = await fetch("/api/enrollment-notifications", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phoneNumber, message }),
+    });
+
+    const result = await getResponsePayload(response);
+    if (!response.ok) {
+      throw new Error(
+        typeof result === "object" && result !== null && "error" in result
+          ? getReadableErrorMessage((result as { error?: unknown }).error)
+          : getReadableErrorMessage(result),
+      );
+    }
+
+    const queued = typeof result === "object" && result !== null && "queued" in result
+      ? Boolean((result as { queued?: unknown }).queued)
+      : false;
+
+    return { queued };
+  };
+
   const handleConfirmAccept = async () => {
     if (!acceptRequest) return;
     if (!acceptForm.circle_id) {
       toast({ title: "خطأ", description: "الرجاء اختيار الحلقة", variant: "destructive" });
+      return;
+    }
+    if (!acceptWhatsAppMessage.trim()) {
+      toast({ title: "خطأ", description: "اكتب نص الرسالة أولاً", variant: "destructive" });
       return;
     }
 
@@ -273,23 +325,40 @@ export default function EnrollmentRequestsPage() {
     }
     
     const normalizedSelectedJuzs = normalizeSelectedJuzs(acceptForm.selected_juzs);
+    const partialMemorizedRanges = parseEnrollmentPartialJuzRanges(acceptForm.memorized_amount).map((range) => ({
+      startSurahNumber: range.fromSurahNumber,
+      startVerseNumber: range.fromVerseNumber,
+      endSurahNumber: range.toSurahNumber,
+      endVerseNumber: range.toVerseNumber,
+    }));
+    const partialJuzNumbers = new Set(parseEnrollmentPartialJuzRanges(acceptForm.memorized_amount).map((range) => range.juzNumber));
     const contiguousSelectedRange = getContiguousSelectedJuzRange(normalizedSelectedJuzs);
     const parsedAmountRange = getJuzNumbersFromAmount(acceptForm.memorized_amount);
+    const fullyMemorizedSelectedJuzs = normalizedSelectedJuzs.filter((juzNumber) => !partialJuzNumbers.has(juzNumber));
 
     if (!hasReviewedTest && normalizedSelectedJuzs.length > 0 && !isContiguousJuzSelection(normalizedSelectedJuzs)) {
       toast({ title: "خطأ", description: "المحفوظ المتفرق يحتاج إلى اختبار أو عرض قبل قبول الطالب", variant: "destructive" });
       return;
     }
 
-    const defaultRangeBounds = contiguousSelectedRange
-      ? getJuzBoundsRange(contiguousSelectedRange.fromJuz, contiguousSelectedRange.toJuz)
+    const defaultRangeBounds = fullyMemorizedSelectedJuzs.length > 0 && isContiguousJuzSelection(fullyMemorizedSelectedJuzs)
+      ? getJuzBoundsRange(fullyMemorizedSelectedJuzs[0], fullyMemorizedSelectedJuzs[fullyMemorizedSelectedJuzs.length - 1])
       : parsedAmountRange.length > 0
         ? getJuzBoundsRange(parsedAmountRange[0], parsedAmountRange[parsedAmountRange.length - 1])
-        : null;
-    const declaredPassedJuzs = normalizedSelectedJuzs.length > 0 ? normalizedSelectedJuzs : parsedAmountRange;
-    const passedJuzs = hasReviewedTest
+        : partialMemorizedRanges.length > 0
+          ? {
+              startSurahNumber: partialMemorizedRanges[0].startSurahNumber,
+              startVerseNumber: partialMemorizedRanges[0].startVerseNumber,
+              endSurahNumber: partialMemorizedRanges[partialMemorizedRanges.length - 1].endSurahNumber,
+              endVerseNumber: partialMemorizedRanges[partialMemorizedRanges.length - 1].endVerseNumber,
+            }
+          : contiguousSelectedRange
+            ? getJuzBoundsRange(contiguousSelectedRange.fromJuz, contiguousSelectedRange.toJuz)
+            : null;
+    const declaredPassedJuzs = normalizedSelectedJuzs.length > 0 ? fullyMemorizedSelectedJuzs : parsedAmountRange;
+    const passedJuzs = (hasReviewedTest
       ? getPassedJuzNumbers(juzTestResults, juzReviewResults)
-      : declaredPassedJuzs;
+      : declaredPassedJuzs).filter((juzNumber) => !partialJuzNumbers.has(juzNumber));
     const masteryJuzs = hasReviewedTest ? getNeedsMasteryJuzNumbers(juzTestResults, juzReviewResults) : [];
     const derivedCompletedRange = isContiguousJuzSelection(passedJuzs)
       ? getContiguousCompletedJuzRange(passedJuzs)
@@ -316,6 +385,7 @@ export default function EnrollmentRequestsPage() {
           memorized_start_verse: derivedCompletedRange?.startVerseNumber ?? defaultRangeBounds?.startVerseNumber ?? null,
           memorized_end_surah: derivedCompletedRange?.endSurahNumber ?? defaultRangeBounds?.endSurahNumber ?? null,
           memorized_end_verse: derivedCompletedRange?.endVerseNumber ?? defaultRangeBounds?.endVerseNumber ?? null,
+          memorized_ranges: partialMemorizedRanges.length > 0 ? partialMemorizedRanges : undefined,
           completed_juzs: passedJuzs.length > 0 ? passedJuzs : undefined,
           current_juzs: masteryJuzs.length > 0 ? masteryJuzs : undefined,
         }),
@@ -341,6 +411,15 @@ export default function EnrollmentRequestsPage() {
 
       setRequests(requests.filter(r => r.id !== acceptRequest.id));
       clearSavedTestResults(acceptRequest.id);
+      let acceptMessageQueued = false;
+      try {
+        const notificationResult = await sendGuardianWhatsAppMessage(acceptForm.phone, acceptWhatsAppMessage);
+        acceptMessageQueued = notificationResult.queued;
+        saveEnrollmentWhatsAppMessage(ACCEPT_WHATSAPP_MESSAGE_STORAGE_KEY, acceptWhatsAppMessage);
+      } catch (notificationError) {
+        console.error("Enrollment accept WhatsApp error:", notificationError);
+      }
+
       setAcceptRequest(null);
       setIsTestDialogOpen(false);
       toast({
@@ -351,6 +430,10 @@ export default function EnrollmentRequestsPage() {
             ? `تم قبول الطالب وحفظ ${passedJuzs.length} جزء`
             : "تم قبول الطالب بنجاح",
       });
+
+      if (!acceptMessageQueued) {
+        toast({ title: "تنبيه", description: "تم قبول الطالب لكن لم يتم تأكيد إرسال رسالة واتساب لولي الأمر", variant: "destructive" });
+      }
     } finally {
       setIsAccepting(false);
     }
@@ -445,6 +528,48 @@ export default function EnrollmentRequestsPage() {
     } catch (error: any) {
       console.error("Error deleting request:", error);
       toast({ title: "حدث خطأ أثناء حذف الطلب", variant: "destructive" });
+    }
+  };
+
+  const handleConfirmReject = async () => {
+    if (!rejectRequest) return;
+    if (!rejectWhatsAppMessage.trim()) {
+      toast({ title: "خطأ", description: "اكتب نص الرسالة أولاً", variant: "destructive" });
+      return;
+    }
+
+    setIsRejecting(true);
+    try {
+      let rejectMessageQueued = false;
+      try {
+        const notificationResult = await sendGuardianWhatsAppMessage(rejectRequest.guardian_phone, rejectWhatsAppMessage);
+        rejectMessageQueued = notificationResult.queued;
+        saveEnrollmentWhatsAppMessage(REJECT_WHATSAPP_MESSAGE_STORAGE_KEY, rejectWhatsAppMessage);
+      } catch (notificationError) {
+        console.error("Enrollment reject WhatsApp error:", notificationError);
+      }
+
+      const { error } = await supabase
+        .from("enrollment_requests")
+        .delete()
+        .eq("id", rejectRequest.id);
+
+      if (error) throw error;
+
+      clearSavedTestResults(rejectRequest.id);
+      setRequests(requests.filter(req => req.id !== rejectRequest.id));
+      setRejectRequest(null);
+
+      toast({ title: "تم رفض الطلب بنجاح" });
+
+      if (!rejectMessageQueued) {
+        toast({ title: "تنبيه", description: "تم رفض الطلب لكن لم يتم تأكيد إرسال رسالة واتساب لولي الأمر", variant: "destructive" });
+      }
+    } catch (error) {
+      console.error("Error rejecting request:", error);
+      toast({ title: "حدث خطأ أثناء رفض الطلب", variant: "destructive" });
+    } finally {
+      setIsRejecting(false);
     }
   };
 
@@ -551,7 +676,7 @@ export default function EnrollmentRequestsPage() {
 						) : (
 							<div className="overflow-x-auto">
 								<table className="w-full min-w-[980px] text-right">
-									<thead className="bg-[#f8f3e7] text-[#20335f]">
+                  <thead className="bg-white text-[#20335f]">
 										<tr>
 											<th className="px-6 py-4 font-semibold">الاسم الثلاثي</th>
 											<th className="px-6 py-4 font-semibold">رقم ولي الأمر</th>
@@ -606,7 +731,7 @@ export default function EnrollmentRequestsPage() {
 															قبول
 														</button>
 														<button
-															onClick={() => deleteRequest(request.id)}
+                              onClick={() => handleOpenReject(request)}
 															className="rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100"
 															title="رفض"
 														>
@@ -632,8 +757,8 @@ export default function EnrollmentRequestsPage() {
 					setDraftJuzReviewResults({})
 				}
 			}}>
-        <DialogContent className="flex max-h-[85vh] max-w-2xl flex-col overflow-hidden border-[#3453a7]/20 p-0 [&>button]:hidden" dir="rtl">
-					<DialogHeader className="border-b border-[#3453a7]/10 bg-[#fbf8ef] px-6 py-5 text-right">
+        <DialogContent className="flex max-h-[85vh] max-w-2xl flex-col overflow-hidden border-[#3453a7]/20 bg-white p-0 [&>button]:hidden" dir="rtl">
+  				<DialogHeader className="border-b border-[#3453a7]/10 bg-white px-6 py-5 text-right">
 						<DialogTitle className="text-xl text-[#1a2332]">قبول الطالب</DialogTitle>
 					</DialogHeader>
 
@@ -661,24 +786,24 @@ export default function EnrollmentRequestsPage() {
 							</div>
 						</div>
 
-						<div className="rounded-2xl border border-[#3453a7]/15 bg-[#fcfbf7] p-4">
-							<div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-								<div className="space-y-1">
-									<Label>المحفوظ</Label>
+            <div className="space-y-3">
+              <div className="grid gap-2 text-right">
+                <Label>المحفوظ</Label>
                   <div className="flex min-h-11 items-center rounded-xl border border-input bg-white px-3 text-sm text-gray-600 shadow-sm">
                     {formatMemorizedDisplay(acceptForm.memorized_amount, acceptForm.selected_juzs) || "غير محدد"}
                   </div>
-								</div>
-								<Button
-									type="button"
-									variant="outline"
+              </div>
+              <div className="flex justify-start">
+                <Button
+                  type="button"
+                  variant="outline"
                   className="h-10 shrink-0 border-[#3453a7]/30"
-									disabled={testableJuzs.length === 0}
-									onClick={() => setIsTestDialogOpen(true)}
-								>
-									اختبار المحفوظ
-								</Button>
-							</div>
+                  disabled={testableJuzs.length === 0}
+                  onClick={() => setIsTestDialogOpen(true)}
+                >
+                  اختبار المحفوظ
+                </Button>
+              </div>
 
 							{hasReviewedTest && testableJuzs.length > 0 && (
 								<div className="mt-4 space-y-3 rounded-2xl bg-white p-4">
@@ -722,6 +847,15 @@ export default function EnrollmentRequestsPage() {
 							</Select>
 						</div>
 
+            <div className="grid gap-2">
+              <Label>رسالة ولي الأمر عبر الواتساب</Label>
+              <textarea
+                value={acceptWhatsAppMessage}
+                onChange={(e) => setAcceptWhatsAppMessage(e.target.value)}
+                className="min-h-[120px] rounded-xl border border-input bg-white px-3 py-3 text-sm shadow-sm outline-none"
+              />
+            </div>
+
             {requiresReviewedTest && !hasReviewedTest && (
               <p className="text-sm font-medium text-amber-700">
                 يجب حفظ نتائج الاختبار أولاً قبل تفعيل تأكيد القبول.
@@ -742,9 +876,49 @@ export default function EnrollmentRequestsPage() {
 				</DialogContent>
 			</Dialog>
 
+      <Dialog open={!!rejectRequest} onOpenChange={(open) => {
+        if (!open) {
+          setRejectRequest(null)
+        }
+      }}>
+        <DialogContent className="flex max-h-[85vh] max-w-xl flex-col overflow-hidden border-[#3453a7]/20 bg-white p-0 [&>button]:hidden" dir="rtl">
+        <DialogHeader className="border-b border-[#3453a7]/10 bg-white px-6 py-5 text-right">
+          <DialogTitle className="text-xl text-[#1a2332]">رفض الطالب</DialogTitle>
+          <DialogDescription className="pt-1 text-sm text-[#64748b]">
+            سيتم إرسال النص التالي إلى ولي الأمر ثم إزالة الطلب من القائمة.
+          </DialogDescription>
+        </DialogHeader>
+
+          <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
+          <div className="rounded-2xl border border-[#3453a7]/10 bg-[#f8fbff] px-4 py-3 text-sm text-[#20335f]">
+            {rejectRequest?.full_name}
+          </div>
+          <div className="grid gap-2">
+            <Label>سبب الرفض / نص الرسالة</Label>
+            <textarea
+              value={rejectWhatsAppMessage}
+              onChange={(e) => setRejectWhatsAppMessage(e.target.value)}
+              className="min-h-[140px] rounded-xl border border-input bg-white px-3 py-3 text-sm shadow-sm outline-none"
+            />
+          </div>
+        </div>
+
+          <DialogFooter className="gap-2 border-t border-[#3453a7]/10 bg-white px-6 py-4 sm:space-x-0">
+          <Button variant="outline" onClick={() => setRejectRequest(null)}>إلغاء</Button>
+          <Button
+              disabled={isRejecting}
+            onClick={handleConfirmReject}
+              className="bg-red-600 text-white hover:bg-red-700 disabled:bg-red-600 disabled:text-white disabled:opacity-35 disabled:pointer-events-none"
+          >
+            {isRejecting ? "جارٍ الرفض..." : "تأكيد الرفض"}
+          </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={isTestDialogOpen} onOpenChange={setIsTestDialogOpen}>
-        <DialogContent className="flex max-h-[85vh] max-w-xl flex-col overflow-hidden border-[#3453a7]/20 p-0 [&>button]:hidden" dir="rtl">
-					<DialogHeader className="border-b border-[#3453a7]/10 bg-[#fbf8ef] px-6 py-5 text-right">
+        <DialogContent className="flex max-h-[85vh] max-w-xl flex-col overflow-hidden border-[#3453a7]/20 bg-white p-0 [&>button]:hidden" dir="rtl">
+  				<DialogHeader className="border-b border-[#3453a7]/10 bg-white px-6 py-5 text-right">
 						<DialogTitle className="text-xl text-[#1a2332]">اختبار المحفوظ</DialogTitle>
 						<DialogDescription className="leading-7 text-neutral-600">
 							حدِّد نتيجة كل جزء داخل المدى المختار، وسيتم حفظ الأجزاء الناجحة في ملف الطالب.
@@ -817,8 +991,8 @@ export default function EnrollmentRequestsPage() {
         }
         setIsReviewDialogOpen(open)
       }}>
-				<DialogContent className="flex max-h-[85vh] max-w-xl flex-col overflow-hidden border-[#3453a7]/20 p-0 [&>button]:hidden" dir="rtl">
-					<DialogHeader className="border-b border-[#3453a7]/10 bg-[#fbf8ef] px-6 py-5 text-right">
+        <DialogContent className="flex max-h-[85vh] max-w-xl flex-col overflow-hidden border-[#3453a7]/20 bg-white p-0 [&>button]:hidden" dir="rtl">
+					<DialogHeader className="border-b border-[#3453a7]/10 bg-white px-6 py-5 text-right">
 						<DialogTitle className="flex items-center justify-start gap-2 text-xl text-[#1a2332]">
 							<span>العرض</span>
               <Popover open={isReviewInfoOpen} onOpenChange={setIsReviewInfoOpen}>

@@ -31,7 +31,7 @@ const THEME_COLORS: Record<string, { primary: string; secondary: string; tertiar
 }
 
 function StarCoinIcon({ size = 96, className = "" }: { size?: number; className?: string }) {
-  const starPath = "M50 18 L58.5 35.5 L78 38.5 L64 52 L67.5 72 L50 62.5 L32.5 72 L36 52 L22 38.5 L41.5 35.5 Z"
+  const sparklePath = "M50 24 L56.5 39 L72 45 L56.5 51 L50 66 L43.5 51 L28 45 L43.5 39 Z"
 
   return (
     <svg
@@ -44,43 +44,49 @@ function StarCoinIcon({ size = 96, className = "" }: { size?: number; className?
       aria-hidden="true"
     >
       <defs>
-        <radialGradient id="coinOuter" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(35 26) rotate(48) scale(68)">
-          <stop offset="0" stopColor="#FFF7A8" />
-          <stop offset="0.42" stopColor="#FFD74F" />
-          <stop offset="1" stopColor="#F0A300" />
+        <radialGradient id="coinOuter" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(34 24) rotate(45) scale(70)">
+          <stop offset="0" stopColor="#FFF8C9" />
+          <stop offset="0.46" stopColor="#FFD85A" />
+          <stop offset="1" stopColor="#E59B00" />
         </radialGradient>
-        <linearGradient id="coinInner" x1="18" y1="12" x2="84" y2="88" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stopColor="#F7DD69" />
-          <stop offset="0.45" stopColor="#F0BB18" />
-          <stop offset="1" stopColor="#E39B00" />
+        <linearGradient id="coinInner" x1="22" y1="16" x2="82" y2="86" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#FFE27A" />
+          <stop offset="0.48" stopColor="#F0BC21" />
+          <stop offset="1" stopColor="#D88C00" />
         </linearGradient>
-        <linearGradient id="coinRim" x1="14" y1="12" x2="86" y2="90" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stopColor="#FFF8A6" />
-          <stop offset="0.5" stopColor="#F7D64E" />
-          <stop offset="1" stopColor="#F0AF17" />
+        <linearGradient id="coinRim" x1="15" y1="12" x2="88" y2="92" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#FFFBE2" />
+          <stop offset="0.52" stopColor="#F9D85A" />
+          <stop offset="1" stopColor="#EAA61B" />
         </linearGradient>
-        <linearGradient id="starFill" x1="30" y1="20" x2="68" y2="76" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stopColor="#FFFDE6" />
-          <stop offset="0.55" stopColor="#F8E98B" />
-          <stop offset="1" stopColor="#E8C84A" />
+        <linearGradient id="sparkleFill" x1="34" y1="24" x2="64" y2="68" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#FFFDF4" />
+          <stop offset="0.54" stopColor="#FFF1A5" />
+          <stop offset="1" stopColor="#F4C93E" />
         </linearGradient>
         <filter id="coinShadow" x="2" y="4" width="96" height="96" filterUnits="userSpaceOnUse">
-          <feDropShadow dx="0" dy="4" stdDeviation="3" floodColor="#A85F00" floodOpacity="0.14" />
+          <feDropShadow dx="0" dy="6" stdDeviation="4" floodColor="#9F5B00" floodOpacity="0.18" />
         </filter>
       </defs>
 
       <g filter="url(#coinShadow)">
         <circle cx="50" cy="50" r="45" fill="url(#coinOuter)" />
         <circle cx="50" cy="50" r="38" fill="url(#coinRim)" />
-        <circle cx="50" cy="50" r="34" fill="url(#coinInner)" />
+        <circle cx="50" cy="50" r="33" fill="url(#coinInner)" />
 
-        <ellipse cx="42" cy="24" rx="17" ry="9" fill="#FFF9C9" opacity="0.28" />
-        <path d="M17 20C24 16 36 12 49 12" stroke="#FFF6A8" strokeWidth="4" strokeLinecap="round" opacity="0.2" />
+        <ellipse cx="40" cy="24" rx="18" ry="9" fill="#FFFBE1" opacity="0.34" />
+        <path d="M18 21C27 15 37 12 49 12" stroke="#FFF4B5" strokeWidth="4" strokeLinecap="round" opacity="0.36" />
+        <circle cx="50" cy="50" r="20" fill="#FFF5C8" opacity="0.18" />
 
-        <g transform="translate(50 50) scale(0.88) translate(-50 -50)">
-          <path d={starPath} fill="#C77A00" opacity="0.38" transform="translate(1.6 2.6)" />
-          <path d={starPath} fill="url(#starFill)" />
-          <path d={starPath} stroke="#FFF8D1" strokeWidth="1.5" opacity="0.95" />
+        <g transform="translate(50 50) scale(0.9) translate(-50 -50)">
+          <path d={sparklePath} fill="#B96F00" opacity="0.24" transform="translate(1.4 2.4)" />
+          <path d={sparklePath} fill="url(#sparkleFill)" />
+          <path d={sparklePath} stroke="#FFF8DA" strokeWidth="1.5" opacity="0.98" />
+          <circle cx="50" cy="50" r="5.5" fill="#FFFBEA" opacity="0.94" />
+          <path d="M50 17V27" stroke="#FFF8DA" strokeWidth="2.2" strokeLinecap="round" opacity="0.9" />
+          <path d="M50 63V73" stroke="#EABF30" strokeWidth="2.2" strokeLinecap="round" opacity="0.76" />
+          <path d="M23 45H33" stroke="#FFF8DA" strokeWidth="2.2" strokeLinecap="round" opacity="0.9" />
+          <path d="M67 45H77" stroke="#EABF30" strokeWidth="2.2" strokeLinecap="round" opacity="0.76" />
         </g>
       </g>
     </svg>
@@ -256,11 +262,11 @@ export default function StorePage() {
                     {categoryProducts.length === 0 ? (
                       <div className="text-center text-gray-300 py-8 text-sm">لا توجد منتجات في هذه الفئة</div>
                     ) : (
-                      <div className="store-products-grid grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 md:grid-cols-3 md:gap-6">
+                      <div className="store-products-grid grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 lg:gap-6">
                         {categoryProducts.map((prod) => (
                           <div
                             key={prod.id}
-                            className="group flex flex-col overflow-hidden rounded-xl transition-all duration-200 hover:shadow-lg"
+                            className="group flex min-w-0 flex-col overflow-hidden rounded-[22px] transition-all duration-200 hover:shadow-lg"
                             style={{
                               background: '#ffffff',
                               border: prod.theme_key ? '2px solid #3453a7' : '1px solid rgba(52,83,167,0.16)',
@@ -272,12 +278,12 @@ export default function StorePage() {
                               const tc = THEME_COLORS[prod.theme_key] || { primary: '#b89858', secondary: '#d4af6a', tertiary: '#8f6b3b' }
                               const isPremium = ["dawn", "galaxy", "sunset_gold", "ocean_deep"].includes(prod.theme_key)
                               return (
-                                <div className="p-4 sm:p-4 md:p-5">
+                                <div className="p-2.5 sm:p-4 md:p-5">
                                   <ThemeRankPreview primary={tc.primary} secondary={tc.secondary} tertiary={tc.tertiary} premium={isPremium} />
                                 </div>
                               )
                             })() : (
-                              <div className="relative flex min-h-[15rem] w-full items-center justify-center bg-white p-4 sm:min-h-[13rem] md:h-56 md:p-5">
+                              <div className="relative flex min-h-[10.5rem] w-full items-center justify-center bg-white p-3 sm:min-h-[13rem] md:h-56 md:p-5">
                                 {prod.image_url ? (
                                   <img src={prod.image_url} alt={prod.name}
                                     className="max-h-full max-w-full object-contain transition-transform duration-300 group-hover:scale-105" />
@@ -288,13 +294,13 @@ export default function StorePage() {
                             )}
 
                             {/* Divider */}
-                            <div className="mx-3 h-px bg-[#e7eef9]" />
+                            <div className="mx-2.5 h-px bg-[#e7eef9] sm:mx-3" />
 
                             {/* Info */}
-                            <div className="flex flex-1 flex-col gap-3 p-4 md:p-5">
+                            <div className="flex flex-1 flex-col gap-2.5 p-3 sm:p-4 md:gap-3 md:p-5">
                               {/* Name */}
                               {!prod.theme_key && (
-                                <p className="h-12 text-base font-semibold leading-snug text-[#1a2332] line-clamp-2 md:h-14 md:text-lg">
+                                <p className="h-10 text-sm font-semibold leading-snug text-[#1a2332] line-clamp-2 sm:h-12 sm:text-base md:h-14 md:text-lg">
                                   {prod.name}
                                 </p>
                               )}
@@ -302,63 +308,72 @@ export default function StorePage() {
                               {/* Buy button */}
                               {prod.theme_key && ownedThemes.includes(prod.theme_key) ? (
                                 <div
-                                  className="w-full py-3.5 rounded-xl text-base md:text-lg font-bold mt-1 flex items-center justify-center gap-2 select-none"
+                                  className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold select-none sm:py-3 sm:text-base md:text-lg"
                                   style={{ background: '#f3f4f6', color: '#6b7280', border: '1px solid #e5e7eb' }}
                                 >
                                   <span>✓</span>
                                   <span>تم الشراء</span>
                                 </div>
                               ) : (
-                              <button
-                                className="w-full py-3.5 rounded-xl text-lg md:text-xl font-black transition-all duration-150 active:scale-95 hover:opacity-90 mt-1 flex items-center justify-center gap-2.5"
-                                style={{ background: 'linear-gradient(135deg, #0f2f6d 0%, #1f4d9a 55%, #3667b2 100%)', color: '#ffffff' }}
-                                onClick={async () => {
-                                  const accountNumber = localStorage.getItem("accountNumber")
-                                  const studentsRes = await fetch(`/api/students?account_number=${accountNumber}`)
-                                  const studentsData = await studentsRes.json()
-                                  const student = studentsData.students?.[0]
-                                  if (!student) {
-                                    toast({ title: "خطأ", description: "لم يتم العثور على الطالب", variant: "destructive" })
-                                    return
-                                  }
-                                  if ((student.store_points ?? 0) < prod.price) {
-                                    toast({ title: "نقاط المتجر غير كافية", description: `لا تملك نقاط متجر كافية لشراء هذا المنتج`, variant: "destructive" })
-                                    return
-                                  }
-                                  const res = await fetch("/api/store-orders", {
-                                    method: "POST",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({
-                                      student_id: student.id,
-                                      student_name: student.name,
-                                      product_id: prod.id,
-                                      product_name: prod.name,
-                                      price: prod.price,
-                                      theme_key: prod.theme_key,
-                                    })
-                                  })
-                                  const data = await res.json()
-                                  if (res.ok && data.success) {
-                                    setStudentPoints(data.remaining_store_points)
-                                    // حفظ المظهر في localStorage إذا كان المنتج مظهراً
-                                    if (prod.theme_key && studentId) {
-                                      const key = `purchases_${studentId}`
-                                      const existing = JSON.parse(localStorage.getItem(key) || '[]')
-                                      const themeEntry = `theme_${prod.theme_key}`
-                                      if (!existing.includes(themeEntry)) {
-                                        localStorage.setItem(key, JSON.stringify([...existing, themeEntry]))
-                                      }
-                                      setOwnedThemes(prev => [...new Set([...prev, prod.theme_key!])])
+                              <div className="mt-1 space-y-3">
+                                <div className="flex items-center justify-center rounded-[20px] border border-[#dce6f6] bg-[linear-gradient(180deg,#ffffff_0%,#fbfdff_100%)] px-3 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.04)] sm:px-4 sm:py-4">
+                                  <div className="flex items-center justify-center gap-2">
+                                    <StarCoinIcon size={24} className="h-5 w-5 shrink-0 sm:h-6 sm:w-6 md:h-7 md:w-7" />
+                                    <span className="text-[1.9rem] font-black leading-none tracking-[-0.04em] text-[#20335f] [font-variant-numeric:tabular-nums] sm:text-[2.15rem] md:text-[2.55rem]">
+                                      {prod.price}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <button
+                                  className="w-full rounded-xl py-2.5 text-sm font-black transition-all duration-150 active:scale-95 hover:opacity-90 sm:py-3 sm:text-base md:text-lg"
+                                  style={{ background: 'linear-gradient(135deg, #0f2f6d 0%, #1f4d9a 55%, #3667b2 100%)', color: '#ffffff' }}
+                                  onClick={async () => {
+                                    const accountNumber = localStorage.getItem("accountNumber")
+                                    const studentsRes = await fetch(`/api/students?account_number=${accountNumber}`)
+                                    const studentsData = await studentsRes.json()
+                                    const student = studentsData.students?.[0]
+                                    if (!student) {
+                                      toast({ title: "خطأ", description: "لم يتم العثور على الطالب", variant: "destructive" })
+                                      return
                                     }
-                                    toast({ title: prod.theme_key ? "تم شراء المظهر بنجاح ✓ يمكنك تفعيله من ملفك الشخصي" : "تم الشراء بنجاح ✓" })
-                                  } else {
-                                    toast({ title: "فشل الشراء", description: data.error || "حدث خطأ غير متوقع", variant: "destructive" })
-                                  }
-                                }}
-                              >
-                                <StarCoinIcon size={24} className="h-[24px] w-[24px] flex-shrink-0 translate-y-[2px]" />
-                                <span className="leading-none tracking-[-0.02em]">{prod.price}</span>
-                              </button>
+                                    if ((student.store_points ?? 0) < prod.price) {
+                                      toast({ title: "نقاط المتجر غير كافية", description: `لا تملك نقاط متجر كافية لشراء هذا المنتج`, variant: "destructive" })
+                                      return
+                                    }
+                                    const res = await fetch("/api/store-orders", {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({
+                                        student_id: student.id,
+                                        student_name: student.name,
+                                        product_id: prod.id,
+                                        product_name: prod.name,
+                                        price: prod.price,
+                                        theme_key: prod.theme_key,
+                                      })
+                                    })
+                                    const data = await res.json()
+                                    if (res.ok && data.success) {
+                                      setStudentPoints(data.remaining_store_points)
+                                      if (prod.theme_key && studentId) {
+                                        const key = `purchases_${studentId}`
+                                        const existing = JSON.parse(localStorage.getItem(key) || '[]')
+                                        const themeEntry = `theme_${prod.theme_key}`
+                                        if (!existing.includes(themeEntry)) {
+                                          localStorage.setItem(key, JSON.stringify([...existing, themeEntry]))
+                                        }
+                                        setOwnedThemes(prev => [...new Set([...prev, prod.theme_key!])])
+                                      }
+                                      toast({ title: prod.theme_key ? "تم شراء المظهر بنجاح ✓ يمكنك تفعيله من ملفك الشخصي" : "تم الشراء بنجاح ✓" })
+                                    } else {
+                                      toast({ title: "فشل الشراء", description: data.error || "حدث خطأ غير متوقع", variant: "destructive" })
+                                    }
+                                  }}
+                                >
+                                  شراء الآن
+                                </button>
+                              </div>
                               )}
                             </div>
                           </div>
