@@ -15,7 +15,7 @@ export function ThemeRankPreview({
 }: ThemeRankPreviewProps) {
   return (
     <div
-      className="relative w-full overflow-hidden rounded-[22px] border-2"
+      className="relative aspect-[1.22/1] w-full overflow-hidden rounded-[22px] border-2 sm:aspect-[1.3/1]"
       style={{
         backgroundColor: premium ? "rgba(250, 248, 245, 0.98)" : "rgba(255, 255, 255, 0.95)",
         borderColor: primary,
@@ -36,21 +36,21 @@ export function ThemeRankPreview({
       />
 
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -right-6 top-4 h-20 w-20 rounded-full blur-3xl" style={{ backgroundColor: `${primary}22` }} />
-        <div className="absolute -left-8 bottom-0 h-16 w-16 rounded-full blur-3xl" style={{ backgroundColor: `${secondary}18` }} />
+        <div className="absolute -right-6 top-4 h-24 w-24 rounded-full blur-3xl sm:h-20 sm:w-20" style={{ backgroundColor: `${primary}22` }} />
+        <div className="absolute -left-8 bottom-0 h-20 w-20 rounded-full blur-3xl sm:h-16 sm:w-16" style={{ backgroundColor: `${secondary}18` }} />
       </div>
 
-      <div className="relative z-10 p-3">
+      <div className="relative z-10 flex h-full items-center p-3 sm:p-3">
         <div className={`flex w-full items-center ${circleAlign === "end" ? "justify-end" : "justify-start"}`}>
           <div
-            className="relative flex h-10 w-10 items-center justify-center rounded-full border shadow-[0_12px_28px_-18px_rgba(0,0,0,0.35)]"
+            className="relative flex h-12 w-12 items-center justify-center rounded-full border shadow-[0_12px_28px_-18px_rgba(0,0,0,0.35)] sm:h-10 sm:w-10"
             style={{
               background: `radial-gradient(circle at 30% 30%, ${secondary}, ${primary})`,
               borderColor: `${tertiary}66`,
             }}
           >
             <div className="absolute inset-[3px] rounded-full border border-white/25" />
-            <div className="absolute h-1.5 w-1.5 rounded-full bg-white/30 top-2 right-2" />
+            <div className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-white/30" />
           </div>
         </div>
       </div>
