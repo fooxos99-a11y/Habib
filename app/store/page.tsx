@@ -221,7 +221,7 @@ export default function StorePage() {
                 </div>
 
                 <div
-                  className="text-5xl md:text-6xl font-black leading-[0.9] tracking-[-0.03em]"
+                  className="text-4xl sm:text-[2.8rem] md:text-6xl font-black leading-[0.9] tracking-[-0.03em]"
                   style={{ color: '#f5c96a', textShadow: '0 0 30px rgba(216,163,85,0.6), 0 2px 0 rgba(0,0,0,0.4)' }}
                 >
                   {studentPoints}
@@ -266,7 +266,7 @@ export default function StorePage() {
                         {categoryProducts.map((prod) => (
                           <div
                             key={prod.id}
-                            className="group flex min-w-0 flex-col overflow-hidden rounded-[22px] transition-all duration-200 hover:shadow-lg"
+                            className={`group flex min-w-0 flex-col overflow-hidden rounded-[22px] transition-all duration-200 hover:shadow-lg ${prod.theme_key ? "min-h-[20rem] sm:min-h-[22rem]" : ""}`}
                             style={{
                               background: '#ffffff',
                               border: prod.theme_key ? '2px solid #3453a7' : '1px solid rgba(52,83,167,0.16)',
@@ -278,7 +278,7 @@ export default function StorePage() {
                               const tc = THEME_COLORS[prod.theme_key] || { primary: '#b89858', secondary: '#d4af6a', tertiary: '#8f6b3b' }
                               const isPremium = ["dawn", "galaxy", "sunset_gold", "ocean_deep"].includes(prod.theme_key)
                               return (
-                                <div className="p-2.5 sm:p-4 md:p-5">
+                                <div className="flex min-h-[12.5rem] items-center p-2.5 sm:min-h-[15rem] sm:p-4 md:min-h-[16rem] md:p-5">
                                   <ThemeRankPreview primary={tc.primary} secondary={tc.secondary} tertiary={tc.tertiary} premium={isPremium} />
                                 </div>
                               )
@@ -319,7 +319,7 @@ export default function StorePage() {
                                 <div className="flex items-center justify-center rounded-[20px] border border-[#dce6f6] bg-[linear-gradient(180deg,#ffffff_0%,#fbfdff_100%)] px-3 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.04)] sm:px-4 sm:py-4">
                                   <div className="flex items-center justify-center gap-2">
                                     <StarCoinIcon size={24} className="h-5 w-5 shrink-0 sm:h-6 sm:w-6 md:h-7 md:w-7" />
-                                    <span className="text-[1.9rem] font-black leading-none tracking-[-0.04em] text-[#20335f] [font-variant-numeric:tabular-nums] sm:text-[2.15rem] md:text-[2.55rem]">
+                                    <span className="text-[1.45rem] font-black leading-none tracking-[-0.035em] text-[#20335f] [font-variant-numeric:tabular-nums] sm:text-[1.8rem] md:text-[2.55rem]">
                                       {prod.price}
                                     </span>
                                   </div>
