@@ -98,6 +98,13 @@ type ScheduleExamForm = {
   examDate: string
 }
 
+type FailedExamAction = "retest" | "rememorize"
+
+type FailedExamActionForm = {
+  action: FailedExamAction
+  retestDate: string
+}
+
 type ScheduleDialogMode = "create" | "edit"
 
 const ALL_CIRCLES_VALUE = "__all_circles__"
@@ -155,6 +162,11 @@ const DEFAULT_NOTIFICATION_TEMPLATES_FORM: NotificationTemplatesForm = {
 const DEFAULT_SCHEDULE_FORM: ScheduleExamForm = {
   juzNumber: "",
   examDate: getTodayDate(),
+}
+
+const DEFAULT_FAILED_EXAM_ACTION_FORM: FailedExamActionForm = {
+  action: "retest",
+  retestDate: getTodayDate(),
 }
 
 function toSettingsForm(settings: ExamSettings): SettingsForm {
@@ -264,6 +276,7 @@ export default function AdminExamsPage() {
   const [isTemplatesDialogOpen, setIsTemplatesDialogOpen] = useState(false)
   const [isSchedulesOverviewOpen, setIsSchedulesOverviewOpen] = useState(false)
   const [isScheduleDialogOpen, setIsScheduleDialogOpen] = useState(false)
+  const [isFailedExamActionDialogOpen, setIsFailedExamActionDialogOpen] = useState(false)
   const [tableMissing, setTableMissing] = useState(false)
   const [schedulesTableMissing, setSchedulesTableMissing] = useState(false)
   const [circles, setCircles] = useState<Circle[]>([])
@@ -286,6 +299,7 @@ export default function AdminExamsPage() {
   const [overviewPage, setOverviewPage] = useState(1)
   const [isOverviewSchedulesLoading, setIsOverviewSchedulesLoading] = useState(false)
   const [overviewSchedulesTableMissing, setOverviewSchedulesTableMissing] = useState(false)
+  const [failedExamActionForm, setFailedExamActionForm] = useState<FailedExamActionForm>(DEFAULT_FAILED_EXAM_ACTION_FORM)
 
   useEffect(() => {
     async function bootstrap() {
@@ -648,6 +662,85 @@ export default function AdminExamsPage() {
     }
   }
 
+  const submitExam = async (failureAction?: FailedExamAction, retestDate?: string) => {
+    const selectedJuz = Number(form.selectedJuz)
+    const selectedPortion = eligiblePortions.find((portion) => portion.portionNumber === selectedJuz)
+
+    const response = await fetch("/api/exams", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        student_id: form.studentId,
+        exam_date: getTodayDate(),
+        portion_type: portionMode,
+        portion_number: selectedJuz,
+        exam_portion_label: selectedPortion?.label || formatExamPortionLabel(selectedJuz, "", portionMode),
+        tested_by_name: form.testedByName.trim(),
+        alerts_count: parseCount(form.alertsCount),
+        mistakes_count: parseCount(form.mistakesCount),
+        failure_action: failureAction,
+        retest_date: retestDate,
+      }),
+    })
+
+    const data = await response.json()
+    if (!response.ok || !data.success) {
+      throw new Error(data.error || "تعذر حفظ الاختبار")
+    }
+
+    const finalScore = data.score?.finalScore ?? scorePreview.finalScore
+    const passed = Boolean(data.score?.passed)
+    const resetWarning = typeof data.resetWarning === "string" ? data.resetWarning : ""
+    const notificationWarning = typeof data.notificationWarning === "string" ? data.notificationWarning : ""
+    const scheduledRetest = Boolean(data.scheduledRetest)
+    const retestDateLabel = typeof data.retestDate === "string" ? data.retestDate : ""
+
+    if (passed) {
+      await showAlert(notificationWarning || `تم حفظ الاختبار بنتيجة ${finalScore} من ${settingsPreview.maxScore}`, notificationWarning ? "تنبيه" : "نجاح")
+    } else if (scheduledRetest) {
+      await showAlert(notificationWarning || resetWarning || `تم تسجيل الرسوب بنتيجة ${finalScore} من ${settingsPreview.maxScore}، وتم تحديد إعادة اختبار ${portionUnitLabel}${retestDateLabel ? ` بتاريخ ${retestDateLabel}` : ""}.`, "تنبيه")
+    } else if (data.requiresRememorization) {
+      await showAlert(notificationWarning || `تم تسجيل الرسوب بنتيجة ${finalScore} من ${settingsPreview.maxScore}، وتم تحويل هذا ${portionUnitLabel} إلى ${portionUnitLabel} يحتاج إعادة حفظ مع استمرار الخطة الحالية.`, "تنبيه")
+    } else {
+      await showAlert(notificationWarning || resetWarning || `تم تسجيل الرسوب بنتيجة ${finalScore} من ${settingsPreview.maxScore}.`, "تنبيه")
+    }
+
+    setForm((current) => ({
+      ...current,
+      alertsCount: "0",
+      mistakesCount: "0",
+    }))
+
+    const [studentsResponse, examsResponse] = await Promise.all([
+      fetch(`/api/students?circle=${encodeURIComponent(selectedCircle)}`, { cache: "no-store" }),
+      fetch(`/api/exams?circle=${encodeURIComponent(selectedCircle)}`, { cache: "no-store" }),
+    ])
+
+    const studentsData = await studentsResponse.json()
+    const examsData = await examsResponse.json()
+    const loadedStudents = (studentsData.students || []) as Student[]
+    const ids = loadedStudents.map((student) => student.id).join(",")
+    const batchPlanResponse = loadedStudents.length > 0
+      ? await fetch(`/api/student-plans?student_ids=${encodeURIComponent(ids)}`, { cache: "no-store" })
+      : null
+    const batchPlanData = batchPlanResponse && batchPlanResponse.ok
+      ? await batchPlanResponse.json()
+      : { plansByStudent: {} }
+    const planEntries = loadedStudents.map((student) => ([
+      student.id,
+      {
+        plan: (batchPlanData.plansByStudent?.[student.id]?.plan || null) as StudentExamPlanProgressSource | null,
+        completedDays: Number(batchPlanData.plansByStudent?.[student.id]?.completedDays) || 0,
+      },
+    ] as const))
+
+    setStudents(loadedStudents)
+    setExams((examsData.exams || []) as ExamRow[])
+    setTableMissing(Boolean(examsData.tableMissing))
+    setStudentPlanProgressMap(Object.fromEntries(planEntries))
+    await loadStudentSchedules(form.studentId)
+  }
+
   const handleSaveExam = async () => {
     if (!form.studentId) {
       await showAlert("اختر الطالب أولاً", "تنبيه")
@@ -664,81 +757,41 @@ export default function AdminExamsPage() {
       return
     }
 
+    if (!scorePreview.passed) {
+      setFailedExamActionForm({
+        action: "retest",
+        retestDate: getTodayDate(),
+      })
+      setIsFailedExamActionDialogOpen(true)
+      return
+    }
+
     try {
       setIsSaving(true)
-      const selectedJuz = Number(form.selectedJuz)
-      const selectedPortion = eligiblePortions.find((portion) => portion.portionNumber === selectedJuz)
-
-      const response = await fetch("/api/exams", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          student_id: form.studentId,
-          exam_date: getTodayDate(),
-          portion_type: portionMode,
-          portion_number: selectedJuz,
-          exam_portion_label: selectedPortion?.label || formatExamPortionLabel(selectedJuz, "", portionMode),
-          tested_by_name: form.testedByName.trim(),
-          alerts_count: parseCount(form.alertsCount),
-          mistakes_count: parseCount(form.mistakesCount),
-        }),
-      })
-
-      const data = await response.json()
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || "تعذر حفظ الاختبار")
-      }
-
-      const finalScore = data.score?.finalScore ?? scorePreview.finalScore
-      const passed = Boolean(data.score?.passed)
-      const resetWarning = typeof data.resetWarning === "string" ? data.resetWarning : ""
-      const notificationWarning = typeof data.notificationWarning === "string" ? data.notificationWarning : ""
-
-      if (passed) {
-        await showAlert(notificationWarning || `تم حفظ الاختبار بنتيجة ${finalScore} من ${settingsPreview.maxScore}`, notificationWarning ? "تنبيه" : "نجاح")
-      } else if (data.requiresRememorization) {
-        await showAlert(notificationWarning || `تم تسجيل الرسوب بنتيجة ${finalScore} من ${settingsPreview.maxScore}، وتم تحويل هذا ${portionUnitLabel} إلى ${portionUnitLabel} يحتاج إعادة حفظ مع استمرار الخطة الحالية.`, "تنبيه")
-      } else {
-        await showAlert(notificationWarning || resetWarning || `تم تسجيل الرسوب بنتيجة ${finalScore} من ${settingsPreview.maxScore}.`, "تنبيه")
-      }
-
-      setForm((current) => ({
-        ...current,
-        alertsCount: "0",
-        mistakesCount: "0",
-      }))
-
-      const [studentsResponse, examsResponse] = await Promise.all([
-        fetch(`/api/students?circle=${encodeURIComponent(selectedCircle)}`, { cache: "no-store" }),
-        fetch(`/api/exams?circle=${encodeURIComponent(selectedCircle)}`, { cache: "no-store" }),
-      ])
-
-      const studentsData = await studentsResponse.json()
-      const examsData = await examsResponse.json()
-      const loadedStudents = (studentsData.students || []) as Student[]
-      const ids = loadedStudents.map((student) => student.id).join(",")
-      const batchPlanResponse = loadedStudents.length > 0
-        ? await fetch(`/api/student-plans?student_ids=${encodeURIComponent(ids)}`, { cache: "no-store" })
-        : null
-      const batchPlanData = batchPlanResponse && batchPlanResponse.ok
-        ? await batchPlanResponse.json()
-        : { plansByStudent: {} }
-      const planEntries = loadedStudents.map((student) => ([
-        student.id,
-        {
-          plan: (batchPlanData.plansByStudent?.[student.id]?.plan || null) as StudentExamPlanProgressSource | null,
-          completedDays: Number(batchPlanData.plansByStudent?.[student.id]?.completedDays) || 0,
-        },
-      ] as const))
-
-      setStudents(loadedStudents)
-      setExams((examsData.exams || []) as ExamRow[])
-      setTableMissing(Boolean(examsData.tableMissing))
-      setStudentPlanProgressMap(Object.fromEntries(planEntries))
-      await loadStudentSchedules(form.studentId)
+      await submitExam()
     } catch (error) {
       console.error("[admin-exams] save:", error)
       await showAlert(error instanceof Error ? error.message : "حدث خطأ أثناء حفظ الاختبار", "خطأ")
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleConfirmFailedExamAction = async () => {
+    if (failedExamActionForm.action === "retest" && !failedExamActionForm.retestDate) {
+      await showAlert("اختر تاريخ إعادة الاختبار", "تنبيه")
+      return
+    }
+
+    try {
+      setIsSaving(true)
+      setIsFailedExamActionDialogOpen(false)
+      await submitExam(failedExamActionForm.action, failedExamActionForm.action === "retest" ? failedExamActionForm.retestDate : undefined)
+      setFailedExamActionForm(DEFAULT_FAILED_EXAM_ACTION_FORM)
+    } catch (error) {
+      console.error("[admin-exams] save failed action:", error)
+      await showAlert(error instanceof Error ? error.message : "حدث خطأ أثناء حفظ قرار الرسوب", "خطأ")
+      setIsFailedExamActionDialogOpen(true)
     } finally {
       setIsSaving(false)
     }
@@ -1336,6 +1389,57 @@ export default function AdminExamsPage() {
                   <Button type="button" onClick={handleSendScheduleNotification} disabled={isSendingScheduleNotification} className="h-11 rounded-2xl bg-[#3453a7] px-6 text-sm font-black text-white hover:bg-[#274187] disabled:bg-[#3453a7]">
                     <BellRing className="me-2 h-4 w-4" />
                     {isSendingScheduleNotification ? (scheduleDialogMode === "edit" ? "جاري التحديث..." : "جاري الحفظ...") : "حفظ وإرسال"}
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={isFailedExamActionDialogOpen} onOpenChange={setIsFailedExamActionDialogOpen}>
+            <DialogContent className="top-3 max-h-[calc(100dvh-1.5rem)] w-[calc(100vw-24px)] max-w-xl translate-y-0 overflow-hidden rounded-[28px] border border-[#dbe5f1] bg-white p-0 shadow-[0_24px_70px_rgba(15,23,42,0.14)] sm:top-[50%] sm:w-full sm:translate-y-[-50%]" showCloseButton={false}>
+              <div className="flex max-h-[calc(100dvh-1.5rem)] flex-col overflow-hidden rounded-[28px] bg-white">
+                <DialogHeader className="border-b border-[#e5edf6] px-6 py-5">
+                  <DialogTitle className="flex w-full items-center justify-start gap-2 text-left text-2xl font-black text-[#1a2332]">
+                    <CircleAlert className="h-5 w-5 text-[#b45309]" />
+                    معالجة الرسوب
+                  </DialogTitle>
+                  <DialogDescription className="pt-2 text-right text-sm font-semibold leading-7 text-[#64748b]">
+                    الطالب غير مجتاز في هذا {portionUnitLabel}. اختر هل تريد إعادته إلى إعادة الحفظ أو تحديد موعد إعادة اختبار جديد.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="grid gap-5 overflow-y-auto px-6 py-6">
+                  <div className="space-y-2 text-right">
+                    <Label className="text-sm font-black text-[#334155]">الإجراء بعد الرسوب</Label>
+                    <Select value={failedExamActionForm.action} onValueChange={(value) => setFailedExamActionForm((current) => ({ ...current, action: value === "rememorize" ? "rememorize" : "retest" }))} dir="rtl">
+                      <SelectTrigger className="h-11 rounded-2xl border-[#d7e3f2] bg-white text-base font-bold">
+                        <SelectValue placeholder="اختر الإجراء" />
+                      </SelectTrigger>
+                      <SelectContent dir="rtl">
+                        <SelectItem value="retest">إعادة الاختبار</SelectItem>
+                        <SelectItem value="rememorize">إعادة الحفظ</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {failedExamActionForm.action === "retest" ? (
+                    <div className="space-y-2 text-right">
+                      <Label className="text-sm font-black text-[#334155]">تاريخ إعادة الاختبار</Label>
+                      <Input type="date" value={failedExamActionForm.retestDate} onChange={(event) => setFailedExamActionForm((current) => ({ ...current, retestDate: event.target.value }))} className="h-11 rounded-2xl border-[#d7e3f2] bg-white text-base font-bold" />
+                    </div>
+                  ) : (
+                    <div className="rounded-[22px] border border-[#fde68a] bg-[#fffbeb] px-4 py-4 text-right text-sm font-bold leading-7 text-[#92400e]">
+                      عند اختيار إعادة الحفظ سيتم إخراج هذا {portionUnitLabel} من المحفوظ المعتمد وإرجاعه إلى مسار الإتقان الحالي للطالب.
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-end gap-3 border-t border-[#e5edf6] px-6 py-4">
+                  <Button type="button" variant="outline" onClick={() => setIsFailedExamActionDialogOpen(false)} className="h-11 rounded-2xl border-[#d7e3f2] bg-white px-5 text-sm font-black text-[#1a2332] hover:bg-[#f8fbff]">
+                    إغلاق
+                  </Button>
+                  <Button type="button" onClick={handleConfirmFailedExamAction} disabled={isSaving} className="h-11 rounded-2xl bg-[#3453a7] px-6 text-sm font-black text-white hover:bg-[#274187] disabled:bg-[#3453a7]">
+                    {isSaving ? "جاري الحفظ..." : "حفظ القرار"}
                   </Button>
                 </div>
               </div>

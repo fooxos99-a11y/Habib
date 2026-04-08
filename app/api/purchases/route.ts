@@ -1,10 +1,17 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { ensureStudentAccess, requireRoles } from "@/lib/auth/guards"
 
 export const dynamic = 'force-dynamic'
 
 export async function POST(request: Request) {
   try {
+    const auth = await requireRoles(request, ["student", "teacher", "deputy_teacher", "admin", "supervisor"])
+    if ("response" in auth) {
+      return auth.response
+    }
+
+    const { session } = auth
     const supabase = await createClient()
     const body = await request.json()
     const { student_id, product_id, price } = body
@@ -13,6 +20,16 @@ export async function POST(request: Request) {
 
     if (!student_id || !product_id || price === undefined) {
       return NextResponse.json({ error: "البيانات المطلوبة ناقصة" }, { status: 400 })
+    }
+
+    const normalizedPrice = Number(price)
+    if (!Number.isFinite(normalizedPrice) || normalizedPrice <= 0) {
+      return NextResponse.json({ error: "سعر المنتج غير صالح" }, { status: 400 })
+    }
+
+    const studentAccess = await ensureStudentAccess(supabase, session, student_id)
+    if ("response" in studentAccess) {
+      return studentAccess.response
     }
 
     // Check if already purchased
@@ -45,7 +62,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "نقاط غير كافية" }, { status: 400 })
     }
 
-    const newPoints = student.points - price
+    const newPoints = student.points - normalizedPrice
     const { error: updateError } = await supabase.from("students").update({ points: newPoints }).eq("id", student_id)
 
     if (updateError) {
@@ -56,7 +73,7 @@ export async function POST(request: Request) {
     // Record the purchase in Supabase so it is available across all devices
     const { error: insertError } = await supabase
       .from("purchases")
-      .insert({ student_id, product_id, price })
+      .insert({ student_id, product_id, price: normalizedPrice })
 
     if (insertError) {
       console.error("[v0] Error inserting purchase record:", insertError)
@@ -80,12 +97,23 @@ export async function POST(request: Request) {
 
 export async function GET(request: Request) {
   try {
+    const auth = await requireRoles(request, ["student", "teacher", "deputy_teacher", "admin", "supervisor"])
+    if ("response" in auth) {
+      return auth.response
+    }
+
+    const { session } = auth
     const supabase = await createClient()
     const { searchParams } = new URL(request.url)
     const studentId = searchParams.get("student_id")
 
     if (!studentId) {
       return NextResponse.json({ error: "معرف الطالب مطلوب" }, { status: 400 })
+    }
+
+    const studentAccess = await ensureStudentAccess(supabase, session, studentId)
+    if ("response" in studentAccess) {
+      return studentAccess.response
     }
 
     const { data, error } = await supabase

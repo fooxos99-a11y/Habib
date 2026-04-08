@@ -1057,7 +1057,7 @@ function calculateCompletedPlanPagesForPlan(plan: {
   prev_end_verse?: number | null
   previous_memorization_ranges?: PreviousMemorizationRange[] | null
   completed_juzs?: number[] | null
-}, completedDays: number) {
+}, completedDays: number, extraPages?: number | null) {
   const traversalSegments = getPlanTraversalSegments(plan)
   const memorizedSegments = traversalSegments.map((segment) => createMemorizedPageSegment({
     startSurahNumber: segment.startSurahNumber,
@@ -1072,12 +1072,14 @@ function calculateCompletedPlanPagesForPlan(plan: {
     ? getTraversalFirstSessionPages(memorizedSegments, Number(plan.daily_pages) || 0)
     : undefined
 
-  return calculateCompletedPlanPages(
+  const completedPages = calculateCompletedPlanPages(
     totalPages,
     Number(plan.daily_pages) || 0,
     completedDays,
     firstSessionPages,
   )
+
+  return Math.min(totalPages, completedPages + normalizeProgressExtraPages(extraPages))
 }
 
 export function calculatePreviousMemorizedPages(plan: {
@@ -1146,8 +1148,8 @@ export function calculateQuranMemorizationProgress(plan: {
   prev_end_verse?: number | null
   previous_memorization_ranges?: PreviousMemorizationRange[] | null
   completed_juzs?: number[] | null
-}, completedDays: number) {
-  const currentPlanPages = calculateCompletedPlanPagesForPlan(plan, completedDays)
+}, completedDays: number, extraPages?: number | null) {
+  const currentPlanPages = calculateCompletedPlanPagesForPlan(plan, completedDays, extraPages)
   const previousPages = calculatePreviousMemorizedPages(plan)
   const memorizedPages = Math.min(TOTAL_MUSHAF_PAGES, previousPages + currentPlanPages)
   const progressPercent = Math.max(0, Math.min(100, (memorizedPages / TOTAL_MUSHAF_PAGES) * 100))
@@ -1202,8 +1204,8 @@ export function getPlanMemorizedRange(plan: {
   start_verse?: number | null
   end_surah_number?: number | null
   end_verse?: number | null
-}, completedDays: number) {
-  const memorizedRanges = getPlanMemorizedRanges(plan, completedDays)
+}, completedDays: number, extraPages?: number | null) {
+  const memorizedRanges = getPlanMemorizedRanges(plan, completedDays, extraPages)
   if (!memorizedRanges || memorizedRanges.length === 0) return null
 
   const memorizedSegments = getMergedMemorizedPageSegments(memorizedRanges)
@@ -1240,10 +1242,10 @@ export function getPlanMemorizedRanges(plan: {
   start_verse?: number | null
   end_surah_number?: number | null
   end_verse?: number | null
-}, completedDays: number) {
+}, completedDays: number, extraPages?: number | null) {
   if (!plan) return []
 
-  const currentPlanPages = calculateCompletedPlanPagesForPlan(plan, completedDays)
+  const currentPlanPages = calculateCompletedPlanPagesForPlan(plan, completedDays, extraPages)
   const previousRanges = getPreviousMemorizedRanges(plan)
   const completedPlanRanges = getCompletedPlanMemorizedRanges(plan as SessionPlanBounds, currentPlanPages)
 
@@ -1286,6 +1288,44 @@ export function getJuzCoverageFromRanges(ranges?: PreviousMemorizationRange[] | 
   }
 
   return { completedJuzs, currentJuzs }
+}
+
+export function getHizbCoverageFromRanges(ranges?: PreviousMemorizationRange[] | null) {
+  const completedHizbs = new Set<number>()
+  const currentHizbs = new Set<number>()
+  const normalizedRanges = mergeAyahRanges([...(ranges || [])])
+
+  if (normalizedRanges.length === 0) {
+    return { completedHizbs, currentHizbs }
+  }
+
+  const segments = getMergedMemorizedPageSegments(normalizedRanges)
+
+  for (let hizbNumber = 1; hizbNumber <= 60; hizbNumber += 1) {
+    const hizbBounds = getHizbBounds(hizbNumber)
+    if (!hizbBounds) continue
+
+    const totalPages = hizbBounds.endPageExclusive - hizbBounds.startPage
+    const memorizedPages = segments.reduce((sum, segment) => {
+      const overlap = Math.max(
+        0,
+        Math.min(segment.endPageExclusive, hizbBounds.endPageExclusive) - Math.max(segment.startPage, hizbBounds.startPage),
+      )
+
+      return sum + overlap
+    }, 0)
+
+    if (memorizedPages >= totalPages - 0.0001) {
+      completedHizbs.add(hizbNumber)
+      continue
+    }
+
+    if (memorizedPages > 0) {
+      currentHizbs.add(hizbNumber)
+    }
+  }
+
+  return { completedHizbs, currentHizbs }
 }
 
 export function getJuzCoverageFromRange(pageRange?: { startPage: number; endPage: number; endPageExclusive?: number } | null) {
@@ -1365,6 +1405,51 @@ export function getJuzProgressDetailsFromRange(
   return details
 }
 
+export function getJuzProgressDetailsFromRanges(
+  ranges?: PreviousMemorizationRange[] | null,
+  explicitCompletedJuzs?: number[] | null,
+  explicitCurrentJuzs?: number[] | null,
+) {
+  const details = new Map<number, { memorizedPages: number; totalPages: number; progressPercent: number }>()
+  const completedSet = new Set(explicitCompletedJuzs || [])
+  const currentSet = new Set(explicitCurrentJuzs || [])
+  const normalizedRanges = mergeAyahRanges([...(ranges || [])])
+  const segments = getMergedMemorizedPageSegments(normalizedRanges)
+
+  for (let juzNumber = 1; juzNumber <= 30; juzNumber += 1) {
+    const juzBounds = getJuzBounds(juzNumber)
+    if (!juzBounds) continue
+
+    const totalPages = juzBounds.endPageExclusive - juzBounds.startPage
+    let memorizedPages = segments.reduce((sum, segment) => {
+      const overlap = Math.max(
+        0,
+        Math.min(segment.endPageExclusive, juzBounds.endPageExclusive) - Math.max(segment.startPage, juzBounds.startPage),
+      )
+
+      return sum + overlap
+    }, 0)
+
+    if (completedSet.has(juzNumber)) {
+      memorizedPages = totalPages
+    } else if (currentSet.has(juzNumber) && memorizedPages <= 0) {
+      memorizedPages = Math.min(totalPages, 0.25)
+    }
+
+    const progressPercent = totalPages > 0
+      ? Math.max(0, Math.min(100, (memorizedPages / totalPages) * 100))
+      : 0
+
+    details.set(juzNumber, {
+      memorizedPages,
+      totalPages,
+      progressPercent: progressPercent >= 99.5 ? 100 : progressPercent,
+    })
+  }
+
+  return details
+}
+
 export function getJuzBounds(juzNumber: number) {
   if (!Number.isInteger(juzNumber) || juzNumber < 1 || juzNumber > 30) {
     return null
@@ -1382,6 +1467,39 @@ export function getJuzBounds(juzNumber: number) {
   const endRef = getInclusiveEndAyah(endPageExclusive)
 
   return {
+    juzNumber,
+    startPage,
+    endPage: endPageExclusive,
+    endPageExclusive,
+    startSurahNumber: startRef.surah,
+    startVerseNumber: startRef.ayah,
+    endSurahNumber: endRef.surah,
+    endVerseNumber: endRef.ayah,
+  }
+}
+
+export function getHizbBounds(hizbNumber: number) {
+  if (!Number.isInteger(hizbNumber) || hizbNumber < 1 || hizbNumber > 60) {
+    return null
+  }
+
+  const juzNumber = Math.ceil(hizbNumber / 2)
+  const juzBounds = getJuzBounds(juzNumber)
+  if (!juzBounds) {
+    return null
+  }
+
+  const middlePage = juzBounds.startPage + ((juzBounds.endPageExclusive - juzBounds.startPage) / 2)
+  const isFirstHalf = hizbNumber % 2 === 1
+  const startPage = isFirstHalf ? juzBounds.startPage : middlePage
+  const endPageExclusive = isFirstHalf ? middlePage : juzBounds.endPageExclusive
+  const startRef = isFirstHalf
+    ? { surah: juzBounds.startSurahNumber, ayah: juzBounds.startVerseNumber }
+    : getAyahByPageFloat(middlePage)
+  const endRef = getInclusiveEndAyah(endPageExclusive)
+
+  return {
+    hizbNumber,
     juzNumber,
     startPage,
     endPage: endPageExclusive,
@@ -1829,7 +1947,7 @@ export function getPlanStartPage(plan: Pick<SessionPlanBounds, "start_surah_numb
   return getPageForAyah(plan.start_surah_number, Number(plan.start_verse) || 1)
 }
 
-export function getPlanSessionContent(plan: SessionPlanBounds, sessionNum: number): PlanSessionContent | null {
+export function getPlanSessionContent(plan: SessionPlanBounds, sessionNum: number, extraConsumedPages?: number | null): PlanSessionContent | null {
   const dailyPages = Number(plan.daily_pages) || 0
   const traversalSegments = getPlanTraversalSegments(plan)
   const memorizedSegments = traversalSegments.map((segment) => createMemorizedPageSegment({
@@ -1845,11 +1963,13 @@ export function getPlanSessionContent(plan: SessionPlanBounds, sessionNum: numbe
   }
 
   const sessionWindow = getTraversalSessionWindow(memorizedSegments, totalPages, dailyPages, sessionNum)
-  if (sessionWindow.offset >= totalPages || sessionWindow.size <= 0) {
+  const shiftedOffset = sessionWindow.offset + normalizeProgressExtraPages(extraConsumedPages)
+
+  if (shiftedOffset >= totalPages || sessionWindow.size <= 0) {
     return null
   }
 
-  return getPlanContentFromTraversalSegments(memorizedSegments, sessionWindow.offset, sessionWindow.size)
+  return getPlanContentFromTraversalSegments(memorizedSegments, shiftedOffset, sessionWindow.size)
 }
 
 export function getAdjustedPlanPreviewRange(params: {
@@ -2046,6 +2166,11 @@ function getTraversalSessionWindow(
     offset,
     size: Math.min(dailyPages, Math.max(0, totalPages - offset)),
   }
+}
+
+function normalizeProgressExtraPages(extraPages?: number | null) {
+  const numericValue = Number(extraPages) || 0
+  return numericValue > 0 ? numericValue : 0
 }
 
 function getPlanContentFromTraversalSegments(
@@ -2532,7 +2657,7 @@ function getWeeklyDistributedReviewContent(
   return getReverseSlidingSegmentContent(segments, offsetPages, todayPages)
 }
 
-function getLegacyPlanSupportSessionContent(plan: SessionPlanBounds, activeDayNum: number, reviewCompletedDays: number): PlanSupportSessionContent {
+function getLegacyPlanSupportSessionContent(plan: SessionPlanBounds, activeDayNum: number, reviewCompletedDays: number, hafizExtraPages?: number | null): PlanSupportSessionContent {
   const completedPlanPages = calculateCompletedPlanPages(
     resolvePlanTotalPages(plan),
     Number(plan.daily_pages) || 0,
@@ -2546,7 +2671,7 @@ function getLegacyPlanSupportSessionContent(plan: SessionPlanBounds, activeDayNu
       })),
       Number(plan.daily_pages) || 0,
     ),
-  )
+  ) + normalizeProgressExtraPages(hafizExtraPages)
 
   const previousRanges = getPreviousMemorizedRanges(plan)
   const completedPlanRanges = getCompletedPlanMemorizedRanges(plan, completedPlanPages)
@@ -2584,14 +2709,14 @@ function getLegacyPlanSupportSessionContent(plan: SessionPlanBounds, activeDayNu
   return { muraajaa, rabt }
 }
 
-export function getPlanSupportSessionContent(plan: SessionPlanBounds, completedDays: number, reviewCompletedDays?: number): PlanSupportSessionContent {
+export function getPlanSupportSessionContent(plan: SessionPlanBounds, completedDays: number, reviewCompletedDays?: number, hafizExtraPages?: number | null): PlanSupportSessionContent {
   const totalDays = resolvePlanTotalDays(plan)
   const activeDayNum = getActivePlanDayNumber(totalDays, completedDays, plan.start_date, plan.created_at)
   const direction = plan.direction === "desc" ? "desc" : "asc"
   const normalizedReviewCompletedDays = Math.max(0, Math.floor(Number(reviewCompletedDays ?? Math.max(0, activeDayNum - 1)) || 0))
 
   if (direction !== "asc") {
-    return getLegacyPlanSupportSessionContent(plan, activeDayNum, normalizedReviewCompletedDays)
+    return getLegacyPlanSupportSessionContent(plan, activeDayNum, normalizedReviewCompletedDays, hafizExtraPages)
   }
 
   const completedPlanPages = calculateCompletedPlanPages(
@@ -2607,7 +2732,7 @@ export function getPlanSupportSessionContent(plan: SessionPlanBounds, completedD
       })),
       Number(plan.daily_pages) || 0,
     ),
-  )
+  ) + normalizeProgressExtraPages(hafizExtraPages)
 
   const previousRanges = getPreviousMemorizedRanges(plan)
   const completedPlanRanges = getCompletedPlanMemorizedRanges(plan, completedPlanPages)

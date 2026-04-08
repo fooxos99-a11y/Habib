@@ -5,10 +5,11 @@ import {
   getJuzBounds,
   getJuzNumbersForPageRange,
   getNormalizedCompletedJuzs,
-  getPlanMemorizedRange,
-  getStoredMemorizedRange,
+  getPlanMemorizedRanges,
+  getStoredMemorizedRanges,
   SURAHS,
   getPageForAyah,
+  type PreviousMemorizationRange,
 } from "@/lib/quran-data"
 import { getCompletedMemorizationDays } from "@/lib/plan-progress"
 import { getOrCreateActiveSemester, isMissingSemestersTable } from "@/lib/semesters"
@@ -53,6 +54,7 @@ type StudentSnapshotSource = {
   account_number?: number | null
   halaqah?: string | null
   completed_juzs?: number[] | null
+  memorized_ranges?: PreviousMemorizationRange[] | null
   memorized_start_surah?: number | null
   memorized_start_verse?: number | null
   memorized_end_surah?: number | null
@@ -69,6 +71,7 @@ type StudentPlanProgressSource = {
   prev_start_verse?: number | null
   prev_end_surah?: number | null
   prev_end_verse?: number | null
+  previous_memorization_ranges?: PreviousMemorizationRange[] | null
   start_surah_number?: number | null
   start_verse?: number | null
   end_surah_number?: number | null
@@ -154,6 +157,101 @@ function createPortionKey(portion: RecitationPortionSnapshot) {
     portion.to_surah,
     portion.to_verse,
   ].join("|")
+}
+
+type PortionIdentityLike = {
+  portion_type: "juz" | "range"
+  label: string
+  from_surah: string | null
+  from_verse: string | null
+  to_surah: string | null
+  to_verse: string | null
+}
+
+function getPortionJuzNumbers(portion: PortionIdentityLike) {
+  const fromSurahNumber = getSurahNumberByName(portion.from_surah)
+  const toSurahNumber = getSurahNumberByName(portion.to_surah)
+  const fromVerse = Number(portion.from_verse || 1)
+  const toVerse = Number(portion.to_verse || 1)
+
+  if (!fromSurahNumber || !toSurahNumber || !Number.isFinite(fromVerse) || !Number.isFinite(toVerse)) {
+    return [] as number[]
+  }
+
+  return getJuzNumbersForPageRange(
+    getPageForAyah(fromSurahNumber, fromVerse),
+    getPageForAyah(toSurahNumber, toVerse) + 0.0001,
+  )
+}
+
+function getSingleJuzNumberForPortion(portion: PortionIdentityLike) {
+  const juzNumbers = getPortionJuzNumbers(portion)
+  return juzNumbers.length === 1 ? juzNumbers[0] : null
+}
+
+function getPortionSpanScore(portion: PortionIdentityLike) {
+  if (portion.portion_type === "juz") {
+    return Number.POSITIVE_INFINITY
+  }
+
+  const fromSurahNumber = getSurahNumberByName(portion.from_surah)
+  const toSurahNumber = getSurahNumberByName(portion.to_surah)
+  const fromVerse = Number(portion.from_verse || 1)
+  const toVerse = Number(portion.to_verse || 1)
+
+  if (!fromSurahNumber || !toSurahNumber || !Number.isFinite(fromVerse) || !Number.isFinite(toVerse)) {
+    return 0
+  }
+
+  const startPage = getPageForAyah(fromSurahNumber, fromVerse)
+  const endPage = getPageForAyah(toSurahNumber, toVerse) + 0.0001
+  return Math.max(0, endPage - startPage)
+}
+
+function dedupeRecitationPortionsByJuz<T extends PortionIdentityLike>(portions: T[]) {
+  const deduped = new Map<string, T>()
+  const juzEntries = new Map<number, { key: string; portion: T }>()
+
+  for (const portion of portions) {
+    const key = [
+      portion.portion_type,
+      portion.label,
+      portion.from_surah,
+      portion.from_verse,
+      portion.to_surah,
+      portion.to_verse,
+    ].join("|")
+
+    if (deduped.has(key)) {
+      continue
+    }
+
+    const singleJuzNumber = getSingleJuzNumberForPortion(portion)
+    if (!singleJuzNumber) {
+      deduped.set(key, portion)
+      continue
+    }
+
+    const existingEntry = juzEntries.get(singleJuzNumber)
+    if (!existingEntry) {
+      deduped.set(key, portion)
+      juzEntries.set(singleJuzNumber, { key, portion })
+      continue
+    }
+
+    const existingPortion = existingEntry.portion
+    const shouldReplaceExisting =
+      (portion.portion_type === "juz" && existingPortion.portion_type !== "juz") ||
+      (portion.portion_type === existingPortion.portion_type && getPortionSpanScore(portion) > getPortionSpanScore(existingPortion))
+
+    if (shouldReplaceExisting) {
+      deduped.delete(existingEntry.key)
+      deduped.set(key, portion)
+      juzEntries.set(singleJuzNumber, { key, portion })
+    }
+  }
+
+  return Array.from(deduped.values())
 }
 
 function isNearlyEqual(left: number, right: number, epsilon = 0.0001) {
@@ -370,26 +468,12 @@ function normalizePersistedStudentPortions(portions: PersistedRecitationPortion[
     }
   }
 
-  const deduped = new Map<string, Omit<PersistedRecitationPortion, "id">>()
-  for (const portion of normalizedPortions) {
-    const key = [
-      portion.recitation_day_student_id,
-      portion.portion_type,
-      portion.label,
-      portion.from_surah,
-      portion.from_verse,
-      portion.to_surah,
-      portion.to_verse,
-    ].join("|")
-
-    if (!deduped.has(key)) {
-      deduped.set(key, portion)
-    }
-  }
+  const deduped = dedupeRecitationPortionsByJuz(normalizedPortions)
+  const hasDedupedChanges = deduped.length !== normalizedPortions.length
 
   return {
-    changed,
-    portions: Array.from(deduped.values()).map((portion, index) => ({
+    changed: changed || hasDedupedChanges,
+    portions: deduped.map((portion, index) => ({
       ...portion,
       sort_order: index + 1,
       updated_at: new Date().toISOString(),
@@ -479,18 +563,17 @@ function buildStudentPortions(student: StudentSnapshotSource, planProgress: Stud
     portionMap.set(createPortionKey(juzPortion), juzPortion)
   }
 
-  const storedRange = getStoredMemorizedRange(student)
-  const planRange = planProgress?.plan
-    ? getPlanMemorizedRange(planProgress.plan, planProgress.completedDays)
-    : null
+  const storedRanges = getStoredMemorizedRanges(student)
+  const planRanges = planProgress?.plan
+    ? getPlanMemorizedRanges(planProgress.plan, planProgress.completedDays)
+    : []
 
-  for (const range of [storedRange, planRange]) {
+  for (const range of [...storedRanges, ...planRanges]) {
     if (!range) continue
 
     for (const portion of buildPortionsFromRange({
-      startPage: Number(range.startPage),
-      endPage: Number(range.endPage),
-      endPageExclusive: Number((range as { endPageExclusive?: number }).endPageExclusive ?? 0) || undefined,
+      startPage: getPageForAyah(Number(range.startSurahNumber), Number(range.startVerseNumber)),
+      endPage: getPageForAyah(Number(range.endSurahNumber), Number(range.endVerseNumber)),
       startSurahNumber: Number(range.startSurahNumber),
       startVerseNumber: Number(range.startVerseNumber),
       endSurahNumber: Number(range.endSurahNumber),
@@ -500,7 +583,7 @@ function buildStudentPortions(student: StudentSnapshotSource, planProgress: Stud
     }
   }
 
-  return sortPortions(Array.from(portionMap.values()))
+  return sortPortions(dedupeRecitationPortionsByJuz(Array.from(portionMap.values())))
 }
 
 function buildFullMemorizedText(portions: RecitationPortionSnapshot[]) {
@@ -682,7 +765,7 @@ export async function getStudentActivePlanProgress(
 ) {
   let planQuery = supabase
     .from("student_plans")
-    .select("direction, total_pages, total_days, daily_pages, has_previous, prev_start_surah, prev_start_verse, prev_end_surah, prev_end_verse, start_surah_number, start_verse, end_surah_number, end_verse, start_date, semester_id")
+    .select("direction, total_pages, total_days, daily_pages, has_previous, prev_start_surah, prev_start_verse, prev_end_surah, prev_end_verse, previous_memorization_ranges, start_surah_number, start_verse, end_surah_number, end_verse, start_date, semester_id")
     .eq("student_id", studentId)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -700,7 +783,7 @@ export async function getStudentActivePlanProgress(
   if (!plan && semesterId) {
     const fallback = await supabase
       .from("student_plans")
-      .select("direction, total_pages, total_days, daily_pages, has_previous, prev_start_surah, prev_start_verse, prev_end_surah, prev_end_verse, start_surah_number, start_verse, end_surah_number, end_verse, start_date")
+      .select("direction, total_pages, total_days, daily_pages, has_previous, prev_start_surah, prev_start_verse, prev_end_surah, prev_end_verse, previous_memorization_ranges, start_surah_number, start_verse, end_surah_number, end_verse, start_date")
       .eq("student_id", studentId)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -774,7 +857,7 @@ export async function buildRecitationDayStudentsSnapshot(
 
   let studentsQuery = supabase
     .from("students")
-    .select("id, name, account_number, halaqah, completed_juzs, memorized_start_surah, memorized_start_verse, memorized_end_surah, memorized_end_verse")
+    .select("id, name, account_number, halaqah, completed_juzs, memorized_ranges, memorized_start_surah, memorized_start_verse, memorized_end_surah, memorized_end_verse")
     .order("name", { ascending: true })
 
   if (normalizedHalaqah) {

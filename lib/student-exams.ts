@@ -1,4 +1,4 @@
-import { SURAHS, getJuzBounds, getJuzCoverageFromRanges, getNormalizedCompletedJuzs, getPendingMasteryJuzs, getPlanMemorizedRanges, getStoredMemorizedRanges, type PreviousMemorizationRange } from "@/lib/quran-data"
+import { SURAHS, getHizbCoverageFromRanges, getJuzBounds, getJuzCoverageFromRanges, getNormalizedCompletedJuzs, getPendingMasteryJuzs, getPlanMemorizedRanges, getStoredMemorizedRanges, type PreviousMemorizationRange } from "@/lib/quran-data"
 import { getExamPortionLabel, getEquivalentPortionNumbers, getJuzNumberForPortion, normalizeExamPortionType } from "@/lib/exam-portions"
 import type { ExamPortionType } from "@/lib/exam-portion-settings"
 
@@ -179,21 +179,50 @@ export function getEligibleExamPortions(
 	const normalizedType = normalizeExamPortionType(portionType)
 	const juzPortions = getEligibleExamJuzs(student, planProgress).map((juzNumber) => (
 		getExamPortionOption(juzNumber, student, planProgress) || { portionType: "juz" as const, portionNumber: juzNumber, juzNumber, label: `الجزء ${juzNumber}`, isComplete: true }
-	))
+	)).filter((portion) => portion.isComplete)
 
 	if (normalizedType === "juz") {
 		return juzPortions
 	}
 
-	return juzPortions.flatMap((portion) => {
-		return getEquivalentPortionNumbers("juz", portion.juzNumber, "hizb").map((hizbNumber) => ({
-			portionType: "hizb" as const,
-			portionNumber: hizbNumber,
-			juzNumber: getJuzNumberForPortion("hizb", hizbNumber) || portion.juzNumber,
-			label: getExamPortionLabel("hizb", hizbNumber, `الحزب ${hizbNumber}`),
-			isComplete: portion.isComplete,
-		}))
-	})
+	return getEligibleExamHizbs(student, planProgress).map((hizbNumber) => ({
+		portionType: "hizb" as const,
+		portionNumber: hizbNumber,
+		juzNumber: getJuzNumberForPortion("hizb", hizbNumber) || Math.ceil(hizbNumber / 2),
+		label: getExamPortionLabel("hizb", hizbNumber, `الحزب ${hizbNumber}`),
+		isComplete: true,
+	}))
+}
+
+export function getEligibleExamHizbs(student?: StudentExamEligibilitySource | null, planProgress?: StudentExamPlanProgress | null) {
+	if (!student) {
+		return []
+	}
+
+	const directCompletedJuzs = getNormalizedCompletedJuzs(student.completed_juzs)
+	const directCompletedHizbs = directCompletedJuzs.flatMap((juzNumber) => getEquivalentPortionNumbers("juz", juzNumber, "hizb"))
+	const storedRanges = getStoredMemorizedRanges(student)
+	const storedCoverage = getHizbCoverageFromRanges(storedRanges)
+	const coveredCompletedHizbs = Array.from(storedCoverage.completedHizbs)
+	const planRanges = planProgress?.plan
+		? getPlanMemorizedRanges(
+			{
+				...planProgress.plan,
+				completed_juzs: directCompletedJuzs,
+			},
+			Number(planProgress.completedDays) || 0,
+		)
+		: []
+	const planCoverage = getHizbCoverageFromRanges(planRanges)
+	const plannedCompletedHizbs = Array.from(planCoverage.completedHizbs)
+
+	return Array.from(
+		new Set([
+			...directCompletedHizbs,
+			...coveredCompletedHizbs,
+			...plannedCompletedHizbs,
+		]),
+	).sort((left, right) => left - right)
 }
 
 export function getEligibleExamJuzs(student?: StudentExamEligibilitySource | null, planProgress?: StudentExamPlanProgress | null) {
@@ -207,7 +236,6 @@ export function getEligibleExamJuzs(student?: StudentExamEligibilitySource | nul
 	const storedRanges = getStoredMemorizedRanges(student)
 	const rangeCoverage = getJuzCoverageFromRanges(storedRanges)
 	const coveredCompleted = Array.from(rangeCoverage.completedJuzs)
-	const coveredCurrent = Array.from(rangeCoverage.currentJuzs)
 	const planRanges = planProgress?.plan
 		? getPlanMemorizedRanges(
 			{
@@ -219,15 +247,12 @@ export function getEligibleExamJuzs(student?: StudentExamEligibilitySource | nul
 		: []
 	const planCoverage = getJuzCoverageFromRanges(planRanges)
 	const plannedCompleted = Array.from(planCoverage.completedJuzs)
-	const plannedCurrent = Array.from(planCoverage.currentJuzs)
 
 	return Array.from(
 		new Set([
 			...directCompleted,
 			...coveredCompleted,
-			...coveredCurrent,
 			...plannedCompleted,
-			...plannedCurrent,
 		]),
 	)
 		.filter((juzNumber) => !blockedJuzs.has(juzNumber))

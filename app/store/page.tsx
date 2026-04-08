@@ -262,7 +262,7 @@ export default function StorePage() {
                     {categoryProducts.length === 0 ? (
                       <div className="text-center text-gray-300 py-8 text-sm">لا توجد منتجات في هذه الفئة</div>
                     ) : (
-                      <div className="store-products-grid grid grid-cols-1 gap-3 min-[430px]:grid-cols-2 sm:gap-4 xl:grid-cols-3 xl:gap-6">
+                      <div className="store-products-grid grid grid-cols-1 gap-3 min-[560px]:grid-cols-2 sm:gap-4 xl:grid-cols-3 xl:gap-6">
                         {categoryProducts.map((prod) => (
                           <div
                             key={prod.id}

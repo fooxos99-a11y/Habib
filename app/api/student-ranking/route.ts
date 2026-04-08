@@ -1,14 +1,26 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { ensureStudentAccess, requireRoles } from "@/lib/auth/guards"
 
 export async function GET(request: Request) {
   try {
+    const auth = await requireRoles(request, ["student", "teacher", "deputy_teacher", "admin", "supervisor"])
+    if ("response" in auth) {
+      return auth.response
+    }
+
+    const { session } = auth
     const supabase = await createClient()
     const { searchParams } = new URL(request.url)
     const studentId = searchParams.get("student_id")
 
     if (!studentId) {
       return NextResponse.json({ error: "معرف الطالب مطلوب" }, { status: 400 })
+    }
+
+    const studentAccess = await ensureStudentAccess(supabase, session, studentId)
+    if ("response" in studentAccess) {
+      return studentAccess.response
     }
 
     const { data: student, error: studentError } = await supabase

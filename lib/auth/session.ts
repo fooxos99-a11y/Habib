@@ -55,16 +55,21 @@ export const SESSION_COOKIE_NAME = "qabas_session"
 export const DAILY_CHALLENGE_COOKIE_NAME = "qabas_daily_challenge"
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 14
 const DAILY_CHALLENGE_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30
+let hasWarnedAboutDevelopmentSessionSecret = false
+
+function getDevelopmentSessionSecret() {
+  const fingerprint = [process.cwd(), process.env.USERNAME || "unknown-user", process.env.COMPUTERNAME || "unknown-host"]
+    .join("|")
+
+  return crypto.createHash("sha256").update(`qabas-dev-session-secret|${fingerprint}`).digest("hex")
+}
 
 function getSessionSecret() {
   return (
     process.env.AUTH_SESSION_SECRET ||
+    process.env.SESSION_SECRET ||
     process.env.NEXTAUTH_SECRET ||
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.SUPABASE_ANON_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_KEY ||
-    "qabas-fallback-session-secret"
+    (process.env.NODE_ENV !== "production" ? getDevelopmentSessionSecret() : null)
   )
 }
 
@@ -77,7 +82,23 @@ function fromBase64Url(value: string) {
 }
 
 function signValue(value: string) {
-  return crypto.createHmac("sha256", getSessionSecret()).update(value).digest("base64url")
+  const secret = getSessionSecret()
+  if (!secret) {
+    throw new Error("Session secret is not configured")
+  }
+
+  if (
+    process.env.NODE_ENV !== "production"
+    && !process.env.AUTH_SESSION_SECRET
+    && !process.env.SESSION_SECRET
+    && !process.env.NEXTAUTH_SECRET
+    && !hasWarnedAboutDevelopmentSessionSecret
+  ) {
+    hasWarnedAboutDevelopmentSessionSecret = true
+    console.warn("AUTH_SESSION_SECRET is not configured. Falling back to a development-only session secret.")
+  }
+
+  return crypto.createHmac("sha256", secret).update(value).digest("base64url")
 }
 
 function safeEqual(left: string, right: string) {
@@ -117,6 +138,10 @@ export async function createSignedSessionToken(user: Omit<SessionUser, "issuedAt
 
 export async function verifySignedSessionToken(token?: string | null): Promise<SessionUser | null> {
   if (!token) {
+    return null
+  }
+
+  if (!getSessionSecret()) {
     return null
   }
 

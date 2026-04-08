@@ -1,4 +1,27 @@
+import crypto from "node:crypto"
 import { NextResponse } from "next/server"
+
+function verifyWebhookSignature(rawBody: string, signatureHeader?: string | null) {
+  const appSecret = process.env.WHATSAPP_APP_SECRET || process.env.META_APP_SECRET
+  if (!appSecret) {
+    return true
+  }
+
+  const providedSignature = String(signatureHeader || "").trim()
+  if (!providedSignature.startsWith("sha256=")) {
+    return false
+  }
+
+  const expectedSignature = `sha256=${crypto.createHmac("sha256", appSecret).update(rawBody).digest("hex")}`
+  const providedBuffer = Buffer.from(providedSignature)
+  const expectedBuffer = Buffer.from(expectedSignature)
+
+  if (providedBuffer.length !== expectedBuffer.length) {
+    return false
+  }
+
+  return crypto.timingSafeEqual(providedBuffer, expectedBuffer)
+}
 
 /**
  * WhatsApp Cloud API - Webhook Endpoint
@@ -42,7 +65,13 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   try {
-    const body = await request.json()
+    const rawBody = await request.text()
+    if (!verifyWebhookSignature(rawBody, request.headers.get("x-hub-signature-256"))) {
+      console.error("[Webhook] Invalid signature")
+      return NextResponse.json({ error: "Invalid signature" }, { status: 403 })
+    }
+
+    const body = JSON.parse(rawBody)
 
     console.log("[Webhook] Received:", JSON.stringify(body, null, 2))
 

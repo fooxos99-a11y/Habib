@@ -808,39 +808,22 @@ export default function TeacherStudentPlansPage() {
   const handleDeletePlan = async (studentId: string) => {
     const confirmed = await confirmDialog({
       title: "حذف الخطة",
-      description: "سيتم حذف الخطة الحالية ومسح محفوظ الطالب ليبدأ من الصفر. هل تريد المتابعة؟",
+      description: "سيتم حذف الخطة الحالية فقط مع الإبقاء على محفوظ الطالب الحالي. هل تريد المتابعة؟",
       confirmText: "حذف",
       cancelText: "إلغاء",
     })
     if (!confirmed) return
 
     try {
-      const res = await fetch("/api/students", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: studentId, reset_memorized: true }),
+      const res = await fetch(`/api/student-plans?student_id=${studentId}`, {
+        method: "DELETE",
       })
       const data = await res.json().catch(() => null)
 
       if (!res.ok) {
-        throw new Error(data?.error || "فشل في حذف الخطة ومسح المحفوظ")
+        throw new Error(data?.error || "فشل في حذف الخطة")
       }
 
-      const clearedStudent = data?.student
-        ? data.student
-        : {
-            completed_juzs: [],
-            current_juzs: [],
-            memorized_start_surah: null,
-            memorized_start_verse: null,
-            memorized_end_surah: null,
-            memorized_end_verse: null,
-            memorized_ranges: null,
-          }
-
-      setStudents((prev) => prev.map((item) => (
-        item.id === studentId ? { ...item, ...clearedStudent } : item
-      )))
       setStudentPlans((prev) => ({ ...prev, [studentId]: null }))
       setStudentProgress((prev) => ({ ...prev, [studentId]: 0 }))
       setStudentCompletedDays((prev) => ({ ...prev, [studentId]: 0 }))
@@ -860,7 +843,7 @@ export default function TeacherStudentPlansPage() {
       }
     } catch (error: any) {
       console.error(error)
-      toast({ title: error?.message || "فشل في حذف الخطة ومسح المحفوظ", variant: "destructive" })
+      toast({ title: error?.message || "فشل في حذف الخطة", variant: "destructive" })
     }
   }
 
@@ -1432,10 +1415,7 @@ export default function TeacherStudentPlansPage() {
                 {students.map((student) => {
                   const plan = studentPlans[student.id]
                   const progress = studentProgress[student.id] || 0
-                  const hasStoredMemorized = Boolean(
-                    (student.completed_juzs?.length || 0) > 0 ||
-                    (student.memorized_start_surah && student.memorized_end_surah),
-                  )
+                  const hasStoredMemorized = getStudentMemorizedDeletionItems(student).length > 0
 
                   return (
                     <div key={student.id} className="px-6 py-4 flex items-center gap-4">
@@ -1481,6 +1461,13 @@ export default function TeacherStudentPlansPage() {
                             <Trash2 className="w-4 h-4" />
                           </button>
                         )}
+                        <button
+                          onClick={() => handleResetMemorization(student)}
+                          disabled={!hasStoredMemorized || resettingStudentId === student.id}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          حذف المحفوظ
+                        </button>
                         <button
                           onClick={() => openAddDialog(student)}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#3453a7]/10 hover:bg-[#3453a7]/20 text-[#4f73d1] border border-[#3453a7]/30 transition-colors"

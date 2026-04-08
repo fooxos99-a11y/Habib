@@ -15,6 +15,7 @@ import {
   isNonEvaluatedAttendance,
 } from "@/lib/student-attendance"
 import { getOrCreateActiveSemester } from "@/lib/semesters"
+import { getHafizExtraPoints, normalizeHafizExtraPages } from "@/lib/hafiz-extra"
 
 function getKsaDateString() {
   const formatter = new Intl.DateTimeFormat("en-CA", {
@@ -47,6 +48,11 @@ function hasCompleteEvaluation(levels: {
 
 function normalizeHalaqah(value?: string | null) {
   return String(value || "").trim().toLowerCase()
+}
+
+function isMissingStudentHafizExtrasTable(error: unknown) {
+  const message = String((error as { message?: string } | null)?.message || error || "")
+  return /student_hafiz_extras/i.test(message) && /does not exist|not exist|relation|table/i.test(message)
 }
 
 export async function POST(request: NextRequest) {
@@ -93,6 +99,26 @@ export async function POST(request: NextRequest) {
     const attendanceTemplates = await loadAttendanceSaveGuardianTemplates()
     const todayDate = getKsaDateString()
     const effectiveTeacherId = isTeacherRole(session.role) ? session.id : teacher_id
+    const hasAnyHafizExtra = students.some((student) => normalizeHafizExtraPages(student?.hafizExtraPages) !== null)
+
+    if (hasAnyHafizExtra) {
+      const { error: hafizExtrasTableError } = await supabase
+        .from("student_hafiz_extras")
+        .select("attendance_record_id")
+        .limit(1)
+
+      if (hafizExtrasTableError && isMissingStudentHafizExtrasTable(hafizExtrasTableError)) {
+        return NextResponse.json(
+          { error: "جدول زيادة الحفظ غير موجود بعد. نفذ ملف 047_create_student_hafiz_extras.sql ثم أعد المحاولة." },
+          { status: 503 },
+        )
+      }
+
+      if (hafizExtrasTableError) {
+        return NextResponse.json({ error: "تعذر التحقق من جدول زيادة الحفظ" }, { status: 500 })
+      }
+    }
+
     const requestedStudentIds = students
       .map((student) => String(student?.id || "").trim())
       .filter(Boolean)
@@ -164,6 +190,8 @@ export async function POST(request: NextRequest) {
       const tikrar_level = isAbsent ? "not_completed" : (evaluation?.tikrar || "not_completed")
       const samaa_level = isAbsent ? "not_completed" : (evaluation?.samaa || "not_completed")
       const rabet_level = isAbsent ? "not_completed" : (evaluation?.rabet || "not_completed")
+      const hafizExtraPages = isAbsent ? null : normalizeHafizExtraPages(student?.hafizExtraPages)
+      const hafizExtraPoints = getHafizExtraPoints(hafizExtraPages)
       const normalizedNotes = typeof notes === "string" && notes.trim() ? notes.trim() : null
 
       console.log(`[DEBUG][API] الطالب: ${student_id}, الحضور: ${status}, التقييمات المدخلة:`, evaluation)
@@ -186,6 +214,7 @@ export async function POST(request: NextRequest) {
       const existingRecord = (existingRecords || []).find((record) => !record.is_compensation) || null
       let attendanceRecord
       let oldPoints = 0
+      let oldHafizExtraPoints = 0
       const previousStatus = existingRecord?.status ?? null
 
       if (existingRecord) {
@@ -219,6 +248,23 @@ export async function POST(request: NextRequest) {
           )
           await supabase.from("evaluations").delete().eq("attendance_record_id", existingRecord.id)
         }
+
+        const { data: oldHafizExtraRows, error: oldHafizExtraError } = await supabase
+          .from("student_hafiz_extras")
+          .select("points_awarded")
+          .eq("attendance_record_id", existingRecord.id)
+
+        if (oldHafizExtraError && !isMissingStudentHafizExtrasTable(oldHafizExtraError)) {
+          return NextResponse.json(
+            { error: "فشل في قراءة زيادة الحفظ السابقة", student_id },
+            { status: 500 },
+          )
+        }
+
+        oldHafizExtraPoints = Array.isArray(oldHafizExtraRows)
+          ? oldHafizExtraRows.reduce((sum, row) => sum + (Number(row.points_awarded) || 0), 0)
+          : 0
+
         await supabase
           .from("attendance_records")
           .update({ teacher_id: effectiveTeacherId, halaqah, status, notes: normalizedNotes })
@@ -310,7 +356,45 @@ export async function POST(request: NextRequest) {
         }
 
         console.log(`[DEBUG][API] التقييم المخزن في قاعدة البيانات:`, evaluationResult)
-        const netPointsChange = totalPoints - oldPoints
+        if (hafizExtraPages !== null) {
+          const { error: hafizExtraUpsertError } = await supabase
+            .from("student_hafiz_extras")
+            .upsert({
+              attendance_record_id: attendanceRecord.id,
+              student_id,
+              semester_id: activeSemester.id,
+              attendance_date: todayDate,
+              extra_pages: hafizExtraPages,
+              points_awarded: hafizExtraPoints,
+              created_by: effectiveTeacherId,
+            }, { onConflict: "attendance_record_id" })
+
+          if (hafizExtraUpsertError) {
+            return NextResponse.json(
+              {
+                error: isMissingStudentHafizExtrasTable(hafizExtraUpsertError)
+                  ? "جدول زيادة الحفظ غير موجود بعد. نفذ ملف 047_create_student_hafiz_extras.sql ثم أعد المحاولة."
+                  : "فشل في حفظ زيادة الحفظ",
+                student_id,
+              },
+              { status: isMissingStudentHafizExtrasTable(hafizExtraUpsertError) ? 503 : 500 },
+            )
+          }
+        } else if (existingRecord) {
+          const { error: deleteHafizExtraError } = await supabase
+            .from("student_hafiz_extras")
+            .delete()
+            .eq("attendance_record_id", attendanceRecord.id)
+
+          if (deleteHafizExtraError && !isMissingStudentHafizExtrasTable(deleteHafizExtraError)) {
+            return NextResponse.json(
+              { error: "فشل في حذف زيادة الحفظ السابقة", student_id },
+              { status: 500 },
+            )
+          }
+        }
+
+        const netPointsChange = (totalPoints + hafizExtraPoints) - (oldPoints + oldHafizExtraPoints)
 
         if (netPointsChange !== 0) {
           const newPoints = Math.max(0, pointState.points + netPointsChange)
@@ -358,14 +442,28 @@ export async function POST(request: NextRequest) {
           else if (whatsappResult.reason === "missing-data") whatsappSummary.skippedReasons.missingData += 1
           else whatsappSummary.skippedReasons.other += 1
         }
-        results.push({ student_id, success: true, pointsAdded: totalPoints })
+        results.push({ student_id, success: true, pointsAdded: totalPoints + hafizExtraPoints })
       } else {
         // إذا كان غائب أو مستأذن لا يتم إضافة تقييمات ولا نقاط، ويتم حذف أي تقييمات قديمة
         await supabase.from("evaluations").delete().eq("attendance_record_id", attendanceRecord.id)
 
-        if (oldPoints > 0) {
-          const newPoints = Math.max(0, pointState.points - oldPoints)
-          const newStorePoints = Math.max(0, pointState.store_points - oldPoints)
+        if (existingRecord) {
+          const { error: deleteHafizExtraError } = await supabase
+            .from("student_hafiz_extras")
+            .delete()
+            .eq("attendance_record_id", attendanceRecord.id)
+
+          if (deleteHafizExtraError && !isMissingStudentHafizExtrasTable(deleteHafizExtraError)) {
+            return NextResponse.json(
+              { error: "فشل في حذف زيادة الحفظ السابقة", student_id },
+              { status: 500 },
+            )
+          }
+        }
+
+        if (oldPoints > 0 || oldHafizExtraPoints > 0) {
+          const newPoints = Math.max(0, pointState.points - oldPoints - oldHafizExtraPoints)
+          const newStorePoints = Math.max(0, pointState.store_points - oldPoints - oldHafizExtraPoints)
 
           await supabase
             .from("students")

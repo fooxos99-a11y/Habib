@@ -2,6 +2,11 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { ensureTeacherScope, requireRoles } from "@/lib/auth/guards"
 
+function isMissingStudentHafizExtrasTable(error: unknown) {
+  const message = String((error as { message?: string } | null)?.message || error || "")
+  return /student_hafiz_extras/i.test(message) && /does not exist|not exist|relation|table/i.test(message)
+}
+
 export async function GET(request: NextRequest) {
   try {
     const auth = await requireRoles(request, ["teacher", "deputy_teacher", "admin", "supervisor"])
@@ -37,6 +42,23 @@ export async function GET(request: NextRequest) {
       console.error("[v0] Error fetching attendance records:", error)
       return NextResponse.json({ error: "Failed to fetch attendance records" }, { status: 500 })
     }
+
+    const attendanceRecordIds = (records || []).map((record: any) => record.id)
+    const { data: hafizExtraRows, error: hafizExtraError } = attendanceRecordIds.length > 0
+      ? await supabase
+          .from("student_hafiz_extras")
+          .select("attendance_record_id, extra_pages")
+          .in("attendance_record_id", attendanceRecordIds)
+      : { data: [], error: null }
+
+    if (hafizExtraError && !isMissingStudentHafizExtrasTable(hafizExtraError)) {
+      console.error("[attendance-by-date] Error fetching hafiz extras:", hafizExtraError)
+      return NextResponse.json({ error: "Failed to fetch hafiz extras" }, { status: 500 })
+    }
+
+    const hafizExtrasByAttendanceRecordId = new Map(
+      (hafizExtraRows || []).map((row: any) => [String(row.attendance_record_id), Number(row.extra_pages) || null]),
+    )
 
     const formattedRecords = await Promise.all(
       (records || []).map(async (record: any) => {
@@ -75,6 +97,7 @@ export async function GET(request: NextRequest) {
           rabet_from_verse: latestEvaluation?.rabet_from_verse || null,
           rabet_to_surah: latestEvaluation?.rabet_to_surah || null,
           rabet_to_verse: latestEvaluation?.rabet_to_verse || null,
+          hafiz_extra_pages: hafizExtrasByAttendanceRecordId.get(String(record.id)) || null,
         }
       }),
     )

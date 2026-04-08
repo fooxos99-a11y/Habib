@@ -7,13 +7,14 @@ import { Footer } from "@/components/footer"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowRight, RotateCcw, MessageSquare } from "lucide-react"
+import { ArrowRight, RotateCcw, MessageSquare, Plus } from "lucide-react"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { useAlertDialog } from "@/hooks/use-confirm-dialog"
 import { SiteLoader } from "@/components/ui/site-loader"
 import { formatQuranRange, getActivePlanDayNumber, getPlanSessionContent, getPlanSupportSessionContent, resolvePlanTotalDays, resolvePlanTotalPages, SURAHS } from "@/lib/quran-data"
 import { type AttendanceStatus, isEvaluatedAttendance, isNonEvaluatedAttendance } from "@/lib/student-attendance"
+import { getHafizExtraLabel, getHafizExtraPoints, HAFIZ_EXTRA_PAGE_VALUES, normalizeHafizExtraPages, type HafizExtraPages } from "@/lib/hafiz-extra"
 
 type EvaluationLevel = "excellent" | "very_good" | "good" | "not_completed" | null
 type EvaluationType = "hafiz" | "tikrar" | "samaa" | "rabet"
@@ -60,6 +61,7 @@ interface StudentAttendance {
 	readingDetails?: ReadingDetails
 	planReadingDetails?: ReadingDetails
 	notes?: string
+	hafizExtraPages?: HafizExtraPages | null
 	savedToday?: boolean
 }
 
@@ -82,6 +84,7 @@ interface SavedAttendanceRecord {
 	rabet_from_verse?: string | null
 	rabet_to_surah?: string | null
 	rabet_to_verse?: string | null
+	hafiz_extra_pages?: number | null
 }
 
 interface MissedDayRecord {
@@ -119,6 +122,7 @@ interface StudentPlan {
 interface PlanProgressResponse {
 	plan: StudentPlan | null
 	completedDays?: number
+	hafizExtraPages?: number
 }
 
 // دالة للحصول على التاريخ الحالي بتوقيت السعودية (بصيغة YYYY-MM-DD)
@@ -137,14 +141,14 @@ const getKsaDateString = () => {
 	return `${year}-${month}-${day}`
 }
 
-const getPlanReadingDetails = (plan: StudentPlan | null, completedDays: number): ReadingDetails => {
+const getPlanReadingDetails = (plan: StudentPlan | null, completedDays: number, hafizExtraPages?: number | null): ReadingDetails => {
 	if (!plan) return {}
 
 	const totalDays = resolvePlanTotalDays(plan)
 	const activeDayNum = getActivePlanDayNumber(totalDays, completedDays, plan.start_date, plan.created_at)
 
-	const hafiz = getPlanSessionContent(plan, activeDayNum)
-	const supportContent = getPlanSupportSessionContent(plan, completedDays)
+	const hafiz = getPlanSessionContent(plan, activeDayNum, hafizExtraPages)
+	const supportContent = getPlanSupportSessionContent(plan, completedDays, undefined, hafizExtraPages)
 	const samaa = supportContent.muraajaa
 	const rabet = supportContent.rabt
 
@@ -225,6 +229,7 @@ const mergeSavedAttendance = (student: StudentAttendance, record?: SavedAttendan
 			rabet: record.rabet_level || undefined,
 		},
 		readingDetails: hasSavedReadingDetails ? savedReadingDetails : student.planReadingDetails,
+		hafizExtraPages: normalizeHafizExtraPages(record.hafiz_extra_pages),
 		savedToday: isLockedForToday,
 	}
 }
@@ -241,6 +246,14 @@ const hasCompletePresentEvaluation = (student: StudentAttendance) => {
 	)
 }
 
+const canManageHafizExtra = (student: StudentAttendance) => (
+	!student.savedToday
+	&& isEvaluatedAttendance(student.attendance)
+	&& !!student.hasPlan
+	&& !!student.evaluation?.hafiz
+	&& student.evaluation.hafiz !== "not_completed"
+)
+
 const isStudentReadyToSave = (student: StudentAttendance) => {
 	if (student.savedToday || student.attendance === null) return false
 	if (!isEvaluatedAttendance(student.attendance)) return true
@@ -254,6 +267,7 @@ const hasPendingLocalChanges = (students: StudentAttendance[]) =>
 			(
 				student.attendance !== null ||
 				!!student.notes ||
+				!!student.hafizExtraPages ||
 				!!student.evaluation?.hafiz ||
 				!!student.evaluation?.tikrar ||
 				!!student.evaluation?.samaa ||
@@ -280,6 +294,9 @@ export default function HalaqahManagement() {
 	const [notesText, setNotesText] = useState("")
 	const [isNotesDialogOpen, setIsNotesDialogOpen] = useState(false)
         const [isCompDialogOpen, setIsCompDialogOpen] = useState(false)
+	const [isHafizExtraDialogOpen, setIsHafizExtraDialogOpen] = useState(false)
+	const [hafizExtraStudentId, setHafizExtraStudentId] = useState<string | null>(null)
+	const [draftHafizExtraPages, setDraftHafizExtraPages] = useState<HafizExtraPages | null>(null)
 	const [compStudentId, setCompStudentId] = useState<string | null>(null)
 		const [missedDays, setMissedDays] = useState<MissedDayRecord[]>([])
         const [isCompLoading, setIsCompLoading] = useState(false)
@@ -435,7 +452,7 @@ export default function HalaqahManagement() {
 
 				const mappedStudents: StudentAttendance[] = data.students.map((student: any) => {
 					const planData = planMap.get(student.id)
-					const planReadingDetails = getPlanReadingDetails(planData?.plan ?? null, planData?.completedDays ?? 0)
+					const planReadingDetails = getPlanReadingDetails(planData?.plan ?? null, planData?.completedDays ?? 0, planData?.hafizExtraPages ?? 0)
 					const localStudent = localStudentsMap.get(student.id)
 					const hasUnsavedLocalChanges = !!localStudent && !localStudent.savedToday
 
@@ -449,6 +466,7 @@ export default function HalaqahManagement() {
 						readingDetails: hasUnsavedLocalChanges ? localStudent.readingDetails || planReadingDetails : planReadingDetails,
 						planReadingDetails,
 						notes: hasUnsavedLocalChanges ? localStudent.notes : undefined,
+						hafizExtraPages: hasUnsavedLocalChanges ? (localStudent.hafizExtraPages || null) : null,
 						savedToday: false,
 					}
 				})
@@ -500,6 +518,7 @@ export default function HalaqahManagement() {
 					? {
 							...s,
 							attendance: status,
+							hafizExtraPages: isEvaluatedAttendance(status) ? s.hafizExtraPages || null : null,
 							evaluation:
 								isNonEvaluatedAttendance(status)
 									? {}
@@ -523,6 +542,7 @@ export default function HalaqahManagement() {
 					? {
 							...s,
 							evaluation: { ...s.evaluation, [type]: level },
+							hafizExtraPages: type === "hafiz" && level === "not_completed" ? null : s.hafizExtraPages || null,
 						}
 					: s,
 			),
@@ -554,7 +574,7 @@ export default function HalaqahManagement() {
 	const handleReset = () => {
 		setStudents(
 			students.map((s) =>
-				s.savedToday ? s : { ...s, attendance: null, evaluation: {}, readingDetails: s.planReadingDetails || {} },
+				s.savedToday ? s : { ...s, attendance: null, evaluation: {}, readingDetails: s.planReadingDetails || {}, hafizExtraPages: null },
 			),
 		)
 	}
@@ -600,6 +620,7 @@ export default function HalaqahManagement() {
 						evaluation: student.evaluation || {},
 						readingDetails: student.readingDetails || {},
 						notes: student.notes || null,
+						hafizExtraPages: student.hafizExtraPages || null,
 					})),
 				}),
 			})
@@ -652,8 +673,8 @@ export default function HalaqahManagement() {
 				s.savedToday
 					? s
 					: !s.hasPlan
-						? { ...s, attendance: null, evaluation: {}, readingDetails: s.planReadingDetails || {} }
-						: { ...s, attendance: "present", evaluation: s.evaluation || {}, readingDetails: s.planReadingDetails || {} },
+						? { ...s, attendance: null, evaluation: {}, readingDetails: s.planReadingDetails || {}, hafizExtraPages: null }
+						: { ...s, attendance: "present", evaluation: s.evaluation || {}, readingDetails: s.planReadingDetails || {}, hafizExtraPages: null },
 			),
 		)
 	}
@@ -664,8 +685,8 @@ export default function HalaqahManagement() {
 				s.savedToday
 					? s
 					: !s.hasPlan
-						? { ...s, attendance: null, evaluation: {}, readingDetails: s.planReadingDetails || {} }
-						: { ...s, attendance: "late", evaluation: s.evaluation || {}, readingDetails: s.planReadingDetails || {} },
+						? { ...s, attendance: null, evaluation: {}, readingDetails: s.planReadingDetails || {}, hafizExtraPages: null }
+						: { ...s, attendance: "late", evaluation: s.evaluation || {}, readingDetails: s.planReadingDetails || {}, hafizExtraPages: null },
 			),
 		)
 	}
@@ -676,8 +697,8 @@ export default function HalaqahManagement() {
 				s.savedToday
 					? s
 					: !s.hasPlan
-						? { ...s, attendance: null, evaluation: {}, readingDetails: s.planReadingDetails || {} }
-						: { ...s, attendance: "absent", evaluation: {}, readingDetails: s.planReadingDetails || {} },
+						? { ...s, attendance: null, evaluation: {}, readingDetails: s.planReadingDetails || {}, hafizExtraPages: null }
+						: { ...s, attendance: "absent", evaluation: {}, readingDetails: s.planReadingDetails || {}, hafizExtraPages: null },
 			),
 		)
 	}
@@ -688,8 +709,8 @@ export default function HalaqahManagement() {
 				s.savedToday
 					? s
 					: !s.hasPlan
-						? { ...s, attendance: null, evaluation: {}, readingDetails: s.planReadingDetails || {} }
-						: { ...s, attendance: "excused", evaluation: {}, readingDetails: s.planReadingDetails || {} },
+						? { ...s, attendance: null, evaluation: {}, readingDetails: s.planReadingDetails || {}, hafizExtraPages: null }
+						: { ...s, attendance: "excused", evaluation: {}, readingDetails: s.planReadingDetails || {}, hafizExtraPages: null },
 			),
 		)
 	}
@@ -718,7 +739,7 @@ export default function HalaqahManagement() {
 			if (!planResponse.ok) return
 
 			const planData: PlanProgressResponse = await planResponse.json()
-			const nextReadingDetails = getPlanReadingDetails(planData?.plan ?? null, planData?.completedDays ?? 0)
+			const nextReadingDetails = getPlanReadingDetails(planData?.plan ?? null, planData?.completedDays ?? 0, planData?.hafizExtraPages ?? 0)
 
 			setStudents((prev) =>
 				prev.map((student) =>
@@ -728,6 +749,7 @@ export default function HalaqahManagement() {
 								hasPlan: !!planData?.plan,
 								readingDetails: nextReadingDetails,
 								planReadingDetails: nextReadingDetails,
+								hafizExtraPages: student.savedToday ? student.hafizExtraPages || null : student.hafizExtraPages || null,
 							}
 						: student,
 				),
@@ -792,6 +814,30 @@ export default function HalaqahManagement() {
 			setStudents(students.map((s) => s.id === notesStudentId ? { ...s, notes: notesText } : s))
 		}
 		setIsNotesDialogOpen(false)
+	}
+
+	const openHafizExtraDialog = (studentId: string) => {
+		const student = students.find((item) => item.id === studentId)
+		if (!student || !canManageHafizExtra(student)) return
+
+		setHafizExtraStudentId(studentId)
+		setDraftHafizExtraPages(student.hafizExtraPages || null)
+		setIsHafizExtraDialogOpen(true)
+	}
+
+	const saveHafizExtra = () => {
+		if (!hafizExtraStudentId) return
+
+		setStudents((prev) => prev.map((student) => (
+			student.id === hafizExtraStudentId
+				? { ...student, hafizExtraPages: draftHafizExtraPages || null }
+				: student
+		)))
+		setIsHafizExtraDialogOpen(false)
+	}
+
+	const clearHafizExtra = () => {
+		setDraftHafizExtraPages(null)
 	}
 
 	const halaqahName = teacherData?.halaqah || "الحلقة"
@@ -974,7 +1020,21 @@ export default function HalaqahManagement() {
 																>
 																	<RotateCcw className="w-3 h-3" />
 																</Button>
+																<Button
+																	variant="outline"
+																	onClick={() => openHafizExtraDialog(student.id)}
+																	title={student.hafizExtraPages ? `زيادة الحفظ: ${getHafizExtraLabel(student.hafizExtraPages)}` : "زيادة الحفظ"}
+																	disabled={!canManageHafizExtra(student)}
+																	className={`h-5 w-5 rounded-md p-0 transition-all flex-shrink-0 ${student.hafizExtraPages ? "bg-emerald-100 border-emerald-400 text-emerald-700 hover:bg-emerald-200 focus-visible:ring-emerald-300" : "border-[#3453a7]/80 text-neutral-600 hover:bg-[#3453a7]/10 hover:border-[#3453a7] hover:text-neutral-800 focus-visible:bg-[#3453a7]/10 focus-visible:border-[#3453a7] focus-visible:text-neutral-800 focus-visible:ring-[#3453a7]/30"}`}
+																>
+																	<Plus className="w-3 h-3" />
+																</Button>
 															</div>
+															{student.hafizExtraPages && (
+																<p className="text-[11px] font-semibold text-emerald-700">
+																	زيادة الحفظ: {getHafizExtraLabel(student.hafizExtraPages)} (+{getHafizExtraPoints(student.hafizExtraPages)} نقاط)
+																</p>
+															)}
 															<div className="space-y-1">
 																<Select
 																	value={student.attendance ?? undefined}
@@ -1153,6 +1213,56 @@ export default function HalaqahManagement() {
 								className="text-sm h-9 rounded-lg border-[#3453a7]/80 text-neutral-600 hover:bg-[#3453a7]/20 hover:border-[#3453a7] hover:text-neutral-800"
 							>
 								حفظ الملاحظة
+							</Button>
+						</div>
+					</div>
+				</DialogContent>
+			</Dialog>
+
+			<Dialog open={isHafizExtraDialogOpen} onOpenChange={setIsHafizExtraDialogOpen}>
+				<DialogContent className="max-w-md" dir="rtl">
+					<DialogTitle className="text-center text-xl font-bold text-[#1a2332]">زيادة الحفظ</DialogTitle>
+					<div className="space-y-4 pt-4">
+						<p className="rounded-xl border border-[#3453a7]/15 bg-[#f5f8ff] px-3 py-2 text-xs font-medium leading-6 text-[#3453a7]">
+							اختر مقدار الزيادة على حفظ اليوم. هذه الزيادة تُقدّم بداية حفظ الغد وتضيف نقاطًا تلقائيًا.
+						</p>
+						<div className="grid grid-cols-3 gap-2">
+							{HAFIZ_EXTRA_PAGE_VALUES.map((value) => {
+								const isActive = draftHafizExtraPages === value
+								return (
+									<button
+										key={value}
+										type="button"
+										onClick={() => setDraftHafizExtraPages(value)}
+										className={`rounded-xl border px-3 py-3 text-sm font-bold transition-colors ${isActive ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-[#3453a7]/20 bg-white text-[#1a2332] hover:border-[#3453a7]/40 hover:bg-[#f5f8ff]"}`}
+									>
+										<div>{getHafizExtraLabel(value)}</div>
+										<div className="mt-1 text-[11px] font-semibold text-neutral-500">+{getHafizExtraPoints(value)} نقاط</div>
+									</button>
+								)
+							})}
+						</div>
+						<div className="flex gap-2 justify-end">
+							<Button
+								variant="outline"
+								onClick={() => setIsHafizExtraDialogOpen(false)}
+								className="text-sm h-9 rounded-lg border-[#3453a7]/80 text-neutral-600"
+							>
+								إلغاء
+							</Button>
+							<Button
+								variant="outline"
+								onClick={clearHafizExtra}
+								className="text-sm h-9 rounded-lg border-red-200 text-red-600 hover:bg-red-50"
+							>
+								إزالة الزيادة
+							</Button>
+							<Button
+								onClick={saveHafizExtra}
+								disabled={!draftHafizExtraPages}
+								className="text-sm h-9 rounded-lg bg-[#3453a7] text-white hover:bg-[#28448e]"
+							>
+								حفظ الزيادة
 							</Button>
 						</div>
 					</div>

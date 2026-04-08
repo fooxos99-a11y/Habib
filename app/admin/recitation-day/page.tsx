@@ -809,16 +809,12 @@ export default function AdminRecitationDayPage() {
           </CardHeader>
           <CardContent>
             {!currentDay ? (
-              <div className="grid gap-4 md:grid-cols-[minmax(0,220px)_minmax(0,220px)_auto] md:items-end md:justify-between">
-                <div className="min-w-0 space-y-2 text-right">
-                  <div className="text-sm font-bold text-[#1a2332]">من</div>
-                  <Input type="date" value={recitationStartDate} max={recitationEndDate || undefined} onChange={(event) => setRecitationStartDate(event.target.value)} className="w-full min-w-0 border-[#d8e4fb] text-sm sm:text-base" />
+              <div className="flex flex-col items-start justify-between gap-4 rounded-[24px] border border-[#e8eef7] bg-[#fafcff] p-4 sm:flex-row sm:items-center">
+                <div className="space-y-1 text-right">
+                  <div className="text-base font-black text-[#1a2332]">لا يوجد يوم سرد مفتوح</div>
+                  <div className="text-sm text-[#64748b]">حدد التاريخ من نافذة البدء ثم أنشئ يوم سرد جديد.</div>
                 </div>
-                <div className="min-w-0 space-y-2 text-right">
-                  <div className="text-sm font-bold text-[#1a2332]">إلى</div>
-                  <Input type="date" value={recitationEndDate} min={recitationStartDate || undefined} onChange={(event) => setRecitationEndDate(event.target.value)} className="w-full min-w-0 border-[#d8e4fb] text-sm sm:text-base" />
-                </div>
-                <Button onClick={() => setIsStartDialogOpen(true)} disabled={!recitationStartDate || !recitationEndDate} className="h-11 w-full rounded-full bg-[#3453a7] px-6 text-white hover:bg-[#28448e] md:w-auto"><PlayCircle className="me-2 h-4 w-4" />بدء يوم السرد</Button>
+                <Button onClick={() => setIsStartDialogOpen(true)} className="h-11 w-full rounded-full bg-[#3453a7] px-6 text-white hover:bg-[#28448e] sm:w-auto"><PlayCircle className="me-2 h-4 w-4" />بدء يوم السرد</Button>
               </div>
             ) : (
               <div className="space-y-5">

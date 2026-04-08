@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase-server"
 import { NextResponse } from "next/server"
+import { requireRoles } from "@/lib/auth/guards"
 
 export async function GET() {
   try {
@@ -27,6 +28,11 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const auth = await requireRoles(request, ["admin", "supervisor"])
+    if ("response" in auth) {
+      return auth.response
+    }
+
     const supabase = await createClient()
     const { name } = await request.json()
 
@@ -50,6 +56,11 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
+    const auth = await requireRoles(request, ["admin", "supervisor"])
+    if ("response" in auth) {
+      return auth.response
+    }
+
     const supabase = await createClient()
     const { id, name } = await request.json()
 
@@ -74,6 +85,11 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const auth = await requireRoles(request, ["admin", "supervisor"])
+    if ("response" in auth) {
+      return auth.response
+    }
+
     const supabase = await createClient()
     const { searchParams } = new URL(request.url)
     const id = searchParams.get("id")

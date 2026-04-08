@@ -10,7 +10,7 @@ import { useVerifiedRoleAccess } from "@/hooks/use-verified-role-access"
 import type { ExamPortionType } from "@/lib/exam-portion-settings"
 import { buildExamPortionRecordMap, getPassedPortionNumbers } from "@/lib/exam-portions"
 import type { PreviousMemorizationRange } from "@/lib/quran-data"
-import { getEligibleExamPortions, type StudentExamPlanProgressSource } from "@/lib/student-exams"
+import { formatExamPortionLabel, getEligibleExamPortions, type StudentExamPlanProgressSource } from "@/lib/student-exams"
 
 type StudentData = {
   id: string
@@ -67,6 +67,28 @@ function getExamPortionDisplay(exam?: Pick<StudentExamRecord, "exam_portion_labe
   }
 
   return exam.juz_number ? `الجزء ${exam.juz_number}` : "-"
+}
+
+function getPortionNumber(record?: { portion_number?: number | null; juz_number?: number | null } | null) {
+  return Number(record?.portion_number || record?.juz_number || 0)
+}
+
+function getNormalizedPortionLabel(
+  record: { exam_portion_label?: string | null; portion_type?: ExamPortionType | null; portion_number?: number | null; juz_number?: number | null } | null | undefined,
+  fallbackMode: ExamPortionType,
+) {
+  if (!record) {
+    return "-"
+  }
+
+  const portionType = record.portion_type === "hizb" ? "hizb" : fallbackMode
+  const portionNumber = getPortionNumber(record)
+
+  if (portionNumber > 0) {
+    return formatExamPortionLabel(portionNumber, record.exam_portion_label || "-", portionType)
+  }
+
+  return record.exam_portion_label?.trim() || "-"
 }
 
 export default function StudentExamsPage() {
@@ -136,10 +158,11 @@ export default function StudentExamsPage() {
   const memorizedPortions = useMemo(() => getEligibleExamPortions(studentData, planProgress, portionMode), [studentData, planProgress, portionMode])
   const memorizedPortionNumbers = useMemo(() => memorizedPortions.map((portion) => portion.portionNumber), [memorizedPortions])
   const memorizedPortionLabels = useMemo(() => new Map(memorizedPortions.map((portion) => [portion.portionNumber, portion.label])), [memorizedPortions])
+  const scheduledPortionNumbers = useMemo(() => studentSchedules.filter((schedule) => schedule.status === "scheduled").map((schedule) => getPortionNumber(schedule)).filter((portionNumber) => portionNumber > 0), [studentSchedules])
   const displayedJuzs = useMemo(() => {
     const testedPortions = Array.from(latestExamByPortion.keys())
-    return Array.from(new Set([...memorizedPortionNumbers, ...testedPortions])).sort((left, right) => left - right)
-  }, [memorizedPortionNumbers, latestExamByPortion])
+    return Array.from(new Set([...memorizedPortionNumbers, ...scheduledPortionNumbers, ...testedPortions])).sort((left, right) => left - right)
+  }, [memorizedPortionNumbers, scheduledPortionNumbers, latestExamByPortion])
 
   const passedPortionNumbers = useMemo(() => getPassedPortionNumbers(studentExams, portionMode), [studentExams, portionMode])
   const passedCount = displayedJuzs.filter((portionNumber) => passedPortionNumbers.has(portionNumber)).length
@@ -252,9 +275,9 @@ export default function StudentExamsPage() {
                     >
                       <CalendarDays className="h-4 w-4 text-white" />
                     </div>
-                    <span className="text-sm font-black">موعد الاختبار القادم</span>
+                    <span className="text-sm font-black">تم تحديد موعد اختبارك</span>
                   </div>
-                  <div className="mt-2 text-xl font-black text-[#1a2332]">{upcomingSchedule.exam_portion_label}</div>
+                  <div className="mt-2 text-xl font-black text-[#1a2332]">{getNormalizedPortionLabel(upcomingSchedule, portionMode)}</div>
                 </div>
 
                 <div className="rounded-2xl bg-[#f5f8ff] px-5 py-4 text-right">
@@ -263,7 +286,23 @@ export default function StudentExamsPage() {
                 </div>
               </div>
             </div>
-          ) : null}
+          ) : (
+            <div className="mb-8 rounded-[28px] border border-[#d7e3f2] bg-white p-5 shadow-[0_14px_30px_rgba(15,23,42,0.05)] md:mb-10 md:p-6">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div className="text-right">
+                  <div className="flex items-center justify-end gap-2 text-[#64748b]">
+                    <div
+                      className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#eef2f7]"
+                    >
+                      <CalendarDays className="h-4 w-4 text-[#64748b]" />
+                    </div>
+                    <span className="text-sm font-black">لا يوجد لديك موعد اختبار</span>
+                  </div>
+                  <div className="mt-2 text-sm font-semibold text-[#64748b]">سيظهر هنا مباشرة عند تحديد موعد جديد لك.</div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {displayedJuzs.length === 0 ? (
             <div className="rounded-[26px] border border-[#dce7f7] bg-white px-6 py-14 text-center shadow-sm">
@@ -283,7 +322,7 @@ export default function StudentExamsPage() {
                 const scheduledExam = scheduledExamByJuz.get(juzNumber)
                 const isPassed = passedPortionNumbers.has(juzNumber)
                 const isFailed = latestExam?.passed === false && !isPassed
-                const portionLabel = latestExam?.exam_portion_label || scheduledExam?.exam_portion_label || memorizedPortionLabels.get(juzNumber) || getExamPortionDisplay(latestExam)
+                const portionLabel = memorizedPortionLabels.get(juzNumber) || getNormalizedPortionLabel(latestExam || scheduledExam, portionMode) || getExamPortionDisplay(latestExam)
 
                 const topBar = isPassed
                   ? "linear-gradient(90deg, #16a34a, #86efac, #16a34a)"
@@ -302,8 +341,6 @@ export default function StudentExamsPage() {
                   : isFailed
                     ? "1.5px solid rgba(239,68,68,0.22)"
                     : "1.5px solid rgba(52,83,167,0.24)"
-
-                const label = isPassed ? "ناجح" : isFailed ? "راسب" : "لم يتم الاختبار"
 
                 return (
                   <div
@@ -343,15 +380,15 @@ export default function StudentExamsPage() {
                             {latestExam?.exam_date
                               ? new Date(latestExam.exam_date).toLocaleDateString("ar-SA")
                               : scheduledExam?.exam_date
-                                ? `موعد الاختبار ${new Date(scheduledExam.exam_date).toLocaleDateString("ar-SA")}`
-                                : "لا يوجد تاريخ اختبار بعد"}
+                                ? `تم تحديده ${new Date(scheduledExam.exam_date).toLocaleDateString("ar-SA")}`
+                                : "لا يوجد لديك موعد اختبار"}
                           </span>
                         </div>
 
                         <div className="w-full rounded-lg border border-black/5 bg-white/80 px-3 py-3 text-right">
                           <div className="text-[11px] font-bold text-[#64748b]">النتيجة</div>
                           <div className={`mt-1 text-sm font-black ${isPassed ? "text-[#166534]" : isFailed ? "text-[#b91c1c]" : "text-[#3453a7]"}`}>
-                            {isPassed ? `ناجح بدرجة ${latestExam?.final_score ?? 0}` : isFailed ? "راسب" : "لم يتم الاختبار"}
+                            {isPassed ? `ناجح بدرجة ${latestExam?.final_score ?? 0}` : isFailed ? "راسب" : scheduledExam ? "تم تحديده" : "لم يتم الاختبار"}
                           </div>
                         </div>
                       </div>

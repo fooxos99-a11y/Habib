@@ -2,7 +2,6 @@
 
 import { useLayoutEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { hasPermissionAccess } from "@/lib/admin-permissions";
 
 interface AdminAuthState {
@@ -32,30 +31,28 @@ export function useAdminAuth(permissionKey?: string): AdminAuthState {
     let cancelled = false;
 
     async function verify() {
-      const isLoggedIn = localStorage.getItem("isLoggedIn") === "true";
-      const accountNumber = localStorage.getItem("accountNumber");
-
-      if (!isLoggedIn || !accountNumber) {
-        router.replace("/login");
-        return;
-      }
-
       try {
-        const supabase = createClient();
-
-        // 1. Fetch fresh role from DB
-        const { data: userData, error } = await supabase
-          .from("users")
-          .select("role")
-          .eq("account_number", Number(accountNumber))
-          .single();
-
-        if (error || !userData) {
+        const authResponse = await fetch("/api/auth", { cache: "no-store" });
+        if (!authResponse.ok) {
+          localStorage.removeItem("isLoggedIn");
+          localStorage.removeItem("userRole");
           router.replace("/login");
           return;
         }
 
-        const freshRole = userData.role || "";
+        const authData = await authResponse.json();
+        const sessionUser = authData.user as { role?: string; accountNumber?: string | number } | undefined;
+        const freshRole = String(sessionUser?.role || "").trim();
+        const accountNumber = String(sessionUser?.accountNumber || "").trim();
+
+        if (!freshRole || !accountNumber) {
+          localStorage.removeItem("isLoggedIn");
+          localStorage.removeItem("userRole");
+          router.replace("/login");
+          return;
+        }
+
+        localStorage.setItem("isLoggedIn", "true");
 
         // 2. Reject students and teachers immediately
         if (freshRole === "student" || freshRole === "teacher" || freshRole === "deputy_teacher" || !freshRole) {
@@ -111,6 +108,8 @@ export function useAdminAuth(permissionKey?: string): AdminAuthState {
           setState({ isLoading: false, isVerified: true, role: freshRole, isFullAccess: hasAll });
         }
       } catch {
+        localStorage.removeItem("isLoggedIn");
+        localStorage.removeItem("userRole");
         router.replace("/login");
       }
     }

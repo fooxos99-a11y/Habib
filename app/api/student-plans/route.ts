@@ -24,6 +24,7 @@ import { getSaudiDateString } from "@/lib/saudi-time"
 import { buildWeeklyReviewPlan, type ReviewMode } from "@/lib/weekly-review"
 import { isEvaluatedAttendance } from "@/lib/student-attendance"
 import { getOrCreateActiveSemester, isMissingSemestersTable } from "@/lib/semesters"
+import { normalizeHafizExtraPages } from "@/lib/hafiz-extra"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -33,11 +34,18 @@ type StudentPlanSummaryPayload = {
   completedDays: number
   reviewCompletedDays: number
   progressPercent: number
+  hafizExtraPages: number
   quranMemorizedPages: number
   quranProgressPercent: number
   quranLevel: number
   attendanceRecords?: any[]
   completedRecords?: any[]
+}
+
+type HafizExtraRecord = {
+  student_id?: string | null
+  attendance_date?: string | null
+  extra_pages?: number | null
 }
 
 type StudentMemorizationSnapshot = {
@@ -62,6 +70,21 @@ type PlanMemorizationFallback = {
 }
 
 const ADVANCING_MEMORIZATION_LEVELS = ["excellent", "good", "very_good"]
+
+function isMissingStudentHafizExtrasTable(error: unknown) {
+  const message = String((error as { message?: string } | null)?.message || error || "")
+  return /student_hafiz_extras/i.test(message) && /does not exist|not exist|relation|table/i.test(message)
+}
+
+function getStudentHafizExtraPages(extraRows: HafizExtraRecord[] = [], startDate?: string | null) {
+  return extraRows.reduce((sum, row) => {
+    if (startDate && row.attendance_date && String(row.attendance_date) < String(startDate)) {
+      return sum
+    }
+
+    return sum + (normalizeHafizExtraPages(row.extra_pages) || 0)
+  }, 0)
+}
 
 function normalizePlanSurahNames<T extends {
   start_surah_number?: number | null
@@ -427,6 +450,7 @@ function buildStudentPlanSummary(
   rawPlan: any | null | undefined,
   attendanceRecords: any[] = [],
   includeAttendanceDetails = true,
+  hafizExtraRows: HafizExtraRecord[] = [],
 ): StudentPlanSummaryPayload {
   const effectiveStudentData = buildEffectiveMemorizationSnapshot(studentData, rawPlan)
   const normalizedCompletedJuzs = effectiveStudentData.completed_juzs || []
@@ -439,6 +463,7 @@ function buildStudentPlanSummary(
       completedDays: 0,
       reviewCompletedDays: 0,
       progressPercent: 0,
+      hafizExtraPages: 0,
       quranMemorizedPages: storedQuranMemorization.memorizedPages,
       quranProgressPercent: storedQuranMemorization.progressPercent,
       quranLevel: storedQuranMemorization.level,
@@ -473,14 +498,24 @@ function buildStudentPlanSummary(
   const completedDays = getCompletedMemorizationDays(passingRecords, scheduledDates.length)
   const completedRecords = getCompletedMemorizationRecords(passingRecords, scheduledDates.length).slice(0, completedDays)
   const reviewCompletedDays = filteredAttendanceRecords.filter(hasCompletedReview).length
-  const progressPercent = plan.total_days > 0
-    ? Math.min(Math.round((completedDays / plan.total_days) * 100), 100)
+  const hafizExtraPages = Math.min(
+    Number(plan.total_pages) || 0,
+    getStudentHafizExtraPages(hafizExtraRows, plan.start_date),
+  )
+  const baseCompletedPages = Math.min(
+    Number(plan.total_pages) || 0,
+    completedDays * (Number(plan.daily_pages) || 0),
+  )
+  const effectiveCompletedPages = Math.min(Number(plan.total_pages) || 0, baseCompletedPages + hafizExtraPages)
+  const progressPercent = Number(plan.total_pages) > 0
+    ? Math.min(Math.round((effectiveCompletedPages / Number(plan.total_pages)) * 100), 100)
     : 0
   return {
     plan,
     completedDays,
     reviewCompletedDays,
     progressPercent,
+    hafizExtraPages,
     quranMemorizedPages: storedQuranMemorization.memorizedPages,
     quranProgressPercent: storedQuranMemorization.progressPercent,
     quranLevel: storedQuranMemorization.level,
@@ -513,6 +548,17 @@ export async function GET(request: Request) {
         .eq("id", planId)
         .single()
       if (error) throw error
+
+      const planStudentId = String(data?.student_id || "")
+      if (!planStudentId) {
+        return NextResponse.json({ error: "الخطة غير موجودة" }, { status: 404 })
+      }
+
+      const studentAccess = await ensureStudentAccess(supabase, session, planStudentId)
+      if ("response" in studentAccess) {
+        return studentAccess.response
+      }
+
       return NextResponse.json({ plan: normalizePlanSurahNames(data) })
     }
 
@@ -541,7 +587,7 @@ export async function GET(request: Request) {
         studentsQuery = studentsQuery.eq("halaqah", session.halaqah || "")
       }
 
-      const [{ data: studentRows, error: studentsError }, { data: planRows, error: plansError }, { data: attendanceRows, error: attendanceError }] = await Promise.all([
+      const [{ data: studentRows, error: studentsError }, { data: planRows, error: plansError }, { data: attendanceRows, error: attendanceError }, hafizExtraResult] = await Promise.all([
         studentsQuery,
         supabase
           .from("student_plans")
@@ -555,11 +601,26 @@ export async function GET(request: Request) {
           .in("student_id", requestedStudentIds)
           .eq("semester_id", activeSemester.id)
           .order("date", { ascending: true }),
+        supabase
+          .from("student_hafiz_extras")
+          .select("student_id, attendance_date, extra_pages")
+          .in("student_id", requestedStudentIds)
+          .eq("semester_id", activeSemester.id),
       ])
 
       if (studentsError) throw studentsError
       if (plansError) throw plansError
       if (attendanceError) throw attendanceError
+
+      const hafizExtraRows = hafizExtraResult.error
+        ? (() => {
+            if (isMissingStudentHafizExtrasTable(hafizExtraResult.error)) {
+              return [] as HafizExtraRecord[]
+            }
+
+            throw hafizExtraResult.error
+          })()
+        : (hafizExtraResult.data || [])
 
       const passedExamJuzsByStudentId = await getPassedExamJuzsByStudentIds(supabase, activeSemester.id, requestedStudentIds)
 
@@ -591,6 +652,19 @@ export async function GET(request: Request) {
         }
       }
 
+      const hafizExtrasByStudent = new Map<string, HafizExtraRecord[]>()
+      for (const extraRow of hafizExtraRows) {
+        const key = String(extraRow.student_id || "")
+        if (!key) continue
+
+        const existing = hafizExtrasByStudent.get(key)
+        if (existing) {
+          existing.push(extraRow)
+        } else {
+          hafizExtrasByStudent.set(key, [extraRow])
+        }
+      }
+
       const plansByStudent = Object.fromEntries(
         requestedStudentIds.map((requestedId) => {
           const studentRecord = studentMap.get(String(requestedId))
@@ -601,6 +675,7 @@ export async function GET(request: Request) {
               latestPlanByStudent.get(String(requestedId)) || null,
               attendanceByStudent.get(String(requestedId)) || [],
               false,
+              hafizExtrasByStudent.get(String(requestedId)) || [],
             ),
           ]
         }),
@@ -640,6 +715,12 @@ export async function GET(request: Request) {
 
       const rawPlan = plans[0]
 
+      const { data: hafizExtraRows, error: hafizExtraError } = await supabase
+        .from("student_hafiz_extras")
+        .select("student_id, attendance_date, extra_pages")
+        .eq("student_id", studentId)
+        .eq("semester_id", activeSemester.id)
+
       // جلب سجلات الحضور مع تقييماتها (join مع evaluations)
       let attQuery = supabase
         .from("attendance_records")
@@ -654,12 +735,16 @@ export async function GET(request: Request) {
 
       const { data: attendanceRecords, error: attError } = await attQuery
 
-      if (attError) {
-        console.error("[plans] attendance query error:", attError)
-        return NextResponse.json(buildStudentPlanSummary(effectiveStudentData, rawPlan, [], true))
+      if (hafizExtraError && !isMissingStudentHafizExtrasTable(hafizExtraError)) {
+        throw hafizExtraError
       }
 
-      return NextResponse.json(buildStudentPlanSummary(effectiveStudentData, rawPlan, attendanceRecords || [], true))
+      if (attError) {
+        console.error("[plans] attendance query error:", attError)
+        return NextResponse.json(buildStudentPlanSummary(effectiveStudentData, rawPlan, [], true, hafizExtraRows || []))
+      }
+
+      return NextResponse.json(buildStudentPlanSummary(effectiveStudentData, rawPlan, attendanceRecords || [], true, hafizExtraRows || []))
     }
 
     return NextResponse.json({ error: "معرف الطالب مطلوب" }, { status: 400 })
@@ -909,25 +994,22 @@ export async function POST(request: Request) {
       previous_memorization_ranges: effectivePreviousRanges.length > 0 ? effectivePreviousRanges : null,
       completed_juzs: normalizedCompletedJuzs,
     })
-    const totalDays =
-      totalDaysOverride && Number(totalDaysOverride) > 0
-        ? Number(totalDaysOverride)
-        : resolvePlanTotalDays({
-            start_surah_number: adjustedStartSurahNumber,
-            start_verse: adjustedStartVerse,
-            end_surah_number,
-            end_verse,
-            total_pages: totalPages,
-            daily_pages,
-            direction: normalizedDirection,
-            has_previous: effectiveHasPrevious,
-            prev_start_surah: effectivePrevStartSurah,
-            prev_start_verse: effectivePrevStartVerse,
-            prev_end_surah: effectivePrevEndSurah,
-            prev_end_verse: effectivePrevEndVerse,
-            previous_memorization_ranges: effectivePreviousRanges.length > 0 ? effectivePreviousRanges : null,
-            completed_juzs: normalizedCompletedJuzs,
-          })
+    const totalDays = resolvePlanTotalDays({
+      start_surah_number: adjustedStartSurahNumber,
+      start_verse: adjustedStartVerse,
+      end_surah_number,
+      end_verse,
+      total_pages: totalPages,
+      daily_pages,
+      direction: normalizedDirection,
+      has_previous: effectiveHasPrevious,
+      prev_start_surah: effectivePrevStartSurah,
+      prev_start_verse: effectivePrevStartVerse,
+      prev_end_surah: effectivePrevEndSurah,
+      prev_end_verse: effectivePrevEndVerse,
+      previous_memorization_ranges: effectivePreviousRanges.length > 0 ? effectivePreviousRanges : null,
+      completed_juzs: normalizedCompletedJuzs,
+    })
     const persistedTotalPages = Math.max(0, Math.ceil(Number(totalPages) || 0))
 
     const { data: existingPlans, error: existingPlansError } = await supabase

@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { User, Trophy, Award, Calendar, Star, BarChart3, Medal, Gem, Flame, Zap, Crown, Heart, BookMarked, CheckCircle2, Clock, BookOpen, Library, Check, PlayCircle, Lock } from "lucide-react"
-import { SURAHS, formatQuranRange, getActivePlanDayNumber, getAdjustedPlanPreviewRange, getDisplayCompletedDays, getJuzCoverageFromRange, getJuzProgressDetailsFromRange, getPlanMemorizedRange, getPlanSessionContent, getPlanSupportSessionContent, getStoredMemorizedRange, hasScatteredCompletedJuzs, resolvePlanTotalDays, resolvePlanTotalPages } from "@/lib/quran-data"
+import { SURAHS, formatQuranRange, getActivePlanDayNumber, getAdjustedPlanPreviewRange, getDisplayCompletedDays, getJuzCoverageFromRange, getJuzCoverageFromRanges, getJuzProgressDetailsFromRange, getJuzProgressDetailsFromRanges, getPlanMemorizedRange, getPlanSessionContent, getPlanSupportSessionContent, getStoredMemorizedRange, getStoredMemorizedRanges, hasScatteredCompletedJuzs, resolvePlanTotalDays, resolvePlanTotalPages } from "@/lib/quran-data"
 import { Button } from "@/components/ui/button"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { ThemeSwitcher } from "@/components/theme-switcher"
@@ -35,6 +35,12 @@ interface StudentData {
   created_at: string
   completed_juzs?: number[]
   current_juzs?: number[]
+  memorized_ranges?: Array<{
+    startSurahNumber: number
+    startVerseNumber: number
+    endSurahNumber: number
+    endVerseNumber: number
+  }> | null
   memorized_start_surah?: number | null
   memorized_start_verse?: number | null
   memorized_end_surah?: number | null
@@ -125,6 +131,7 @@ function ProfilePage() {
   const [planData, setPlanData] = useState<any>(null)
   const [planCompletedDays, setPlanCompletedDays] = useState(0)
   const [planReviewCompletedDays, setPlanReviewCompletedDays] = useState(0)
+  const [planHafizExtraPages, setPlanHafizExtraPages] = useState(0)
   const [planProgress, setPlanProgress] = useState(0)
   const [planAttendance, setPlanAttendance] = useState<any[]>([])
   const [isLoadingPlan, setIsLoadingPlan] = useState(false)
@@ -251,6 +258,7 @@ function ProfilePage() {
       setPlanData(data.plan ?? null)
       setPlanCompletedDays(data.completedDays ?? 0)
       setPlanReviewCompletedDays(data.reviewCompletedDays ?? 0)
+      setPlanHafizExtraPages(data.hafizExtraPages ?? 0)
       setPlanProgress(data.progressPercent ?? 0)
       setPlanAttendance(data.completedRecords ?? [])
 
@@ -436,17 +444,27 @@ function ProfilePage() {
     : null
 
   const memorizedRange = normalizedPlanData
-    ? getPlanMemorizedRange(normalizedPlanData, planCompletedDays)
+    ? getPlanMemorizedRange(normalizedPlanData, planCompletedDays, planHafizExtraPages)
     : hasScatteredCompletedJuzs(studentData?.completed_juzs)
       ? null
       : getStoredMemorizedRange(studentData)
 
-  const { completedJuzs, currentJuzs } = getJuzCoverageFromRange(memorizedRange)
-  const juzProgressDetails = getJuzProgressDetailsFromRange(
-    memorizedRange,
-    studentData?.completed_juzs,
-    studentData?.current_juzs,
-  )
+  const storedMemorizedRanges = getStoredMemorizedRanges(studentData)
+
+  const { completedJuzs, currentJuzs } = normalizedPlanData
+    ? getJuzCoverageFromRange(memorizedRange)
+    : getJuzCoverageFromRanges(storedMemorizedRanges)
+  const juzProgressDetails = normalizedPlanData
+    ? getJuzProgressDetailsFromRange(
+        memorizedRange,
+        studentData?.completed_juzs,
+        studentData?.current_juzs,
+      )
+    : getJuzProgressDetailsFromRanges(
+        storedMemorizedRanges,
+        studentData?.completed_juzs,
+        studentData?.current_juzs,
+      )
 
   return (
     <>
@@ -729,7 +747,7 @@ function ProfilePage() {
                   // بناء قائمة كل الأيام
                   const allDays = Array.from({ length: totalDays }, (_, i) => {
                     const dayNum = i + 1
-                    const sessionContent = getPlanSessionContent(planData, dayNum)
+                    const sessionContent = getPlanSessionContent(planData, dayNum, planHafizExtraPages)
 
                     let label = ""
                     if (daily === 0.25) {
@@ -757,7 +775,7 @@ function ProfilePage() {
                                     const activeDayNum = getActivePlanDayNumber(totalDays, planCompletedDays, planData.start_date, planData.created_at);
                   
                   const { muraajaa: muraajaaContent, rabt: rabtContent } = normalizedPlanData
-                    ? getPlanSupportSessionContent(normalizedPlanData, planCompletedDays, planReviewCompletedDays)
+                    ? getPlanSupportSessionContent(normalizedPlanData, planCompletedDays, planReviewCompletedDays, planHafizExtraPages)
                     : { muraajaa: null, rabt: null }
 
                   return (

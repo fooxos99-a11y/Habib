@@ -61,6 +61,10 @@ function formatExamDate(dateValue: string) {
 	return `${year}/${month}/${day}`
 }
 
+function isValidIsoDate(value: string) {
+	return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "").trim())
+}
+
 function hasCompletedMemorization(record: any) {
 	const evaluations = Array.isArray(record.evaluations)
 		? record.evaluations
@@ -338,6 +342,8 @@ export async function POST(request: Request) {
 		const alertsCount = parseCount(body.alerts_count)
 		const mistakesCount = parseCount(body.mistakes_count)
 		const notes = String(body.notes || "").trim() || null
+		const failureAction = body.failure_action === "retest" ? "retest" : "rememorize"
+		const retestDate = String(body.retest_date || "").trim()
 
 		if (!studentId) {
 			return NextResponse.json({ error: "الطالب مطلوب" }, { status: 400 })
@@ -463,14 +469,21 @@ export async function POST(request: Request) {
 
 		let requiresRememorization = false
 		let resetWarning: string | null = null
+		let scheduledRetest = false
 
 		if (!score.passed) {
-			try {
-				await markFailedJuzForRememorization(supabase, student, getJuzNumberForPortion(portionType, portionNumber) || portionNumber)
-				requiresRememorization = true
-			} catch (resetError) {
-				console.error("[exams][POST] failed exam reset error", resetError)
-				resetWarning = "تم تسجيل الرسوب لكن تعذر تحويل الجزء إلى إعادة حفظ تلقائيًا."
+			if (failureAction === "retest") {
+				if (!isValidIsoDate(retestDate)) {
+					return NextResponse.json({ error: "تاريخ إعادة الاختبار غير صالح" }, { status: 400 })
+				}
+			} else {
+				try {
+					await markFailedJuzForRememorization(supabase, student, getJuzNumberForPortion(portionType, portionNumber) || portionNumber)
+					requiresRememorization = true
+				} catch (resetError) {
+					console.error("[exams][POST] failed exam reset error", resetError)
+					resetWarning = "تم تسجيل الرسوب لكن تعذر تحويل الجزء إلى إعادة حفظ تلقائيًا."
+				}
 			}
 		} else {
 			try {
@@ -511,6 +524,89 @@ export async function POST(request: Request) {
 		const { error: scheduleCompletionError } = await scheduleCompletionQuery
 		if (scheduleCompletionError && !isMissingStudentExamsTable(scheduleCompletionError)) {
 			console.error("[exams][POST] complete schedule error", scheduleCompletionError)
+		}
+
+		if (!score.passed && failureAction === "retest") {
+			try {
+				const { data: existingRetestSchedule, error: existingRetestScheduleError } = await supabase
+					.from("exam_schedules")
+					.select("id")
+					.eq("student_id", student.id)
+					.eq("semester_id", activeSemester.id)
+					.eq("portion_type", portionType)
+					.eq("portion_number", portionNumber)
+					.eq("status", "scheduled")
+					.maybeSingle()
+
+				if (existingRetestScheduleError && !isMissingStudentExamsTable(existingRetestScheduleError)) {
+					throw existingRetestScheduleError
+				}
+
+				if (!existingRetestSchedule?.id) {
+					const { data: retestSchedule, error: retestScheduleError } = await supabase
+						.from("exam_schedules")
+						.insert({
+							student_id: student.id,
+							semester_id: activeSemester.id,
+							halaqah: student.halaqah,
+							exam_portion_label: examPortionLabel,
+							portion_type: portionType,
+							portion_number: portionNumber,
+							juz_number: getJuzNumberForPortion(portionType, portionNumber),
+							exam_date: retestDate,
+							status: "scheduled",
+							notification_sent_at: new Date().toISOString(),
+							scheduled_by_user_id: session.id,
+							scheduled_by_name: session.name,
+							scheduled_by_role: session.role,
+							updated_at: new Date().toISOString(),
+						})
+						.select("id")
+						.single()
+
+					if (retestScheduleError && !isMissingStudentExamsTable(retestScheduleError)) {
+						throw retestScheduleError
+					}
+
+					if (retestSchedule?.id) {
+						scheduledRetest = true
+						const examWhatsAppTemplates = await getExamWhatsAppTemplates(supabase)
+						const scheduleMessage = buildExamAppNotificationMessage("create", {
+							studentName: student.name || "الطالب",
+							date: formatExamDate(retestDate),
+							portion: examPortionLabel,
+							halaqah: student.halaqah,
+						}, examWhatsAppTemplates)
+
+						await insertNotificationsAndSendPush(supabase, [{
+							user_account_number: String(student.account_number || ""),
+							message: scheduleMessage,
+							url: "/exams",
+							tag: `exam-schedule-${retestSchedule.id}`,
+						}])
+
+						const scheduleWhatsAppMessage = fillExamWhatsAppTemplate(examWhatsAppTemplates.create, {
+							studentName: student.name || "الطالب",
+							date: formatExamDate(retestDate),
+							portion: examPortionLabel,
+							halaqah: student.halaqah,
+						})
+
+						await enqueueWhatsAppMessage(supabase, {
+							phoneNumber: student.guardian_phone,
+							message: scheduleWhatsAppMessage,
+							userId: session.id,
+							dedupeDate: retestDate,
+						})
+					}
+				} else {
+					scheduledRetest = true
+					resetWarning = `يوجد بالفعل موعد إعادة اختبار مجدول بتاريخ ${formatExamDate(retestDate)}.`
+				}
+			} catch (retestScheduleError) {
+				console.error("[exams][POST] retest schedule error", retestScheduleError)
+				resetWarning = "تم تسجيل الرسوب لكن تعذر تحديد موعد إعادة الاختبار تلقائيًا."
+			}
 		}
 
 		let notificationWarning: string | null = null
@@ -557,7 +653,7 @@ export async function POST(request: Request) {
 			notificationWarning = "تم حفظ التقييم لكن تعذر إرسال إشعار النتيجة."
 		}
 
-		return NextResponse.json({ success: true, exam: data, score, requiresRememorization, resetWarning, notificationWarning }, { status: 201 })
+		return NextResponse.json({ success: true, exam: data, score, requiresRememorization, scheduledRetest, retestDate: scheduledRetest ? formatExamDate(retestDate) : null, resetWarning, notificationWarning }, { status: 201 })
 	} catch (error) {
 		console.error("[exams][POST]", error)
 		if (isMissingSemestersTable(error)) {

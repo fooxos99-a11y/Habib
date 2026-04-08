@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server"
 import { getSupabaseServer } from "@/lib/supabase-server"
+import { requireRoles } from "@/lib/auth/guards"
 
 export async function POST(request: Request) {
   try {
+    const auth = await requireRoles(request, ["teacher", "deputy_teacher", "admin", "supervisor"])
+    if ("response" in auth) {
+      return auth.response
+    }
+
     const formData = await request.formData();
     const file = formData.get("file") as File;
     if (!file) {
