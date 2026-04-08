@@ -50,8 +50,21 @@ export function ThemeRankPreview({
               : `linear-gradient(135deg, rgba(255,255,255,0.74), ${primary}05, ${secondary}07)`,
           }}
         >
-          <div className="flex h-[120px] items-center gap-3 px-4 sm:h-[138px] sm:gap-4 sm:px-5 md:h-[152px] md:grid md:grid-cols-[72px_minmax(0,1fr)] md:gap-5 md:px-6">
-            <div className={`flex shrink-0 items-center ${circleAlign === "end" ? "justify-end md:order-2" : "justify-start"}`}>
+          <div className="relative h-[120px] px-4 sm:h-[138px] sm:px-5 md:h-[152px] md:px-6">
+            <div
+              className="absolute inset-y-4 rounded-[18px] border sm:inset-y-5 sm:rounded-[20px] md:inset-y-6 md:rounded-[22px]"
+              style={{
+                left: circleAlign === "end" ? "1rem" : "3.75rem",
+                right: circleAlign === "end" ? "3.75rem" : "1rem",
+                borderColor: `${primary}18`,
+                background: premium
+                  ? `linear-gradient(135deg, rgba(255,255,255,0.64), ${primary}07, rgba(255,255,255,0.78))`
+                  : `linear-gradient(135deg, rgba(255,255,255,0.72), ${primary}04, ${secondary}06)`,
+                boxShadow: `inset 0 1px 0 rgba(255,255,255,0.55)`,
+              }}
+            />
+
+            <div className={`absolute inset-y-0 flex items-center ${circleAlign === "end" ? "right-4 sm:right-5 md:right-6" : "left-4 sm:left-5 md:left-6"}`}>
               <div
                 className="leaderboard-rank-bob relative flex h-12 w-12 items-center justify-center rounded-full border shadow-[0_12px_28px_-18px_rgba(0,0,0,0.35)] transition-transform duration-300 group-hover:scale-105 md:h-14 md:w-14"
                 style={{
@@ -61,48 +74,6 @@ export function ThemeRankPreview({
               >
                 <div className="absolute inset-[3px] rounded-full border border-white/25" />
                 <div className="absolute h-2 w-2 rounded-full bg-white/30 top-2 right-2" />
-              </div>
-            </div>
-
-            <div className={`min-w-0 ${circleAlign === "end" ? "md:order-1" : ""}`}>
-              <div className={`flex ${circleAlign === "end" ? "justify-end" : "justify-start"}`}>
-                <div
-                  className="h-4 rounded-full md:h-5"
-                  style={{
-                    width: "clamp(7rem, 58%, 14rem)",
-                    background: `linear-gradient(to right, ${tertiary}, ${primary})`,
-                    opacity: 0.95,
-                  }}
-                />
-              </div>
-
-              <div className={`mt-3 flex ${circleAlign === "end" ? "justify-end" : "justify-start"}`}>
-                <div
-                  className="h-3 rounded-full md:h-4"
-                  style={{
-                    width: "clamp(4.5rem, 34%, 8rem)",
-                    backgroundColor: `${secondary}70`,
-                  }}
-                />
-              </div>
-
-              <div className={`mt-3 flex gap-2 ${circleAlign === "end" ? "justify-end" : "justify-start"}`}>
-                <div
-                  className="h-5 rounded-full border md:h-6"
-                  style={{
-                    width: "3.3rem",
-                    borderColor: `${primary}22`,
-                    backgroundColor: "rgba(255,255,255,0.7)",
-                  }}
-                />
-                <div
-                  className="h-5 rounded-full border md:h-6"
-                  style={{
-                    width: "4.2rem",
-                    borderColor: `${secondary}22`,
-                    backgroundColor: premium ? `${primary}12` : `${secondary}10`,
-                  }}
-                />
               </div>
             </div>
           </div>
