@@ -11,7 +11,7 @@ export function ThemeRankPreview({
   secondary,
   tertiary,
   premium = false,
-  circleAlign = "start",
+  circleAlign = "end",
 }: ThemeRankPreviewProps) {
   return (
     <div
@@ -40,7 +40,7 @@ export function ThemeRankPreview({
         <div className="absolute -left-10 bottom-0 h-24 w-24 rounded-full blur-3xl" style={{ backgroundColor: `${secondary}18` }} />
       </div>
 
-      <div className="relative z-10 p-3 sm:p-4 md:p-5">
+      <div className="relative z-10 p-2.5 sm:p-3.5 md:p-4">
         <div
           className="rounded-[20px] border shadow-[0_18px_40px_-24px_rgba(0,0,0,0.18)] backdrop-blur sm:rounded-[24px]"
           style={{
@@ -50,12 +50,12 @@ export function ThemeRankPreview({
               : `linear-gradient(135deg, rgba(255,255,255,0.74), ${primary}05, ${secondary}07)`,
           }}
         >
-          <div className="relative h-[120px] px-4 sm:h-[138px] sm:px-5 md:h-[152px] md:px-6">
+          <div className="relative h-[92px] px-3 sm:h-[106px] sm:px-4 md:h-[118px] md:px-5">
             <div
-              className="absolute inset-y-4 rounded-[18px] border sm:inset-y-5 sm:rounded-[20px] md:inset-y-6 md:rounded-[22px]"
+              className="absolute inset-y-3 rounded-[18px] border sm:inset-y-4 sm:rounded-[20px] md:inset-y-5 md:rounded-[22px]"
               style={{
-                left: circleAlign === "end" ? "1rem" : "3.75rem",
-                right: circleAlign === "end" ? "3.75rem" : "1rem",
+                left: circleAlign === "end" ? "0.875rem" : "3.875rem",
+                right: circleAlign === "end" ? "3.875rem" : "0.875rem",
                 borderColor: `${primary}18`,
                 background: premium
                   ? `linear-gradient(135deg, rgba(255,255,255,0.64), ${primary}07, rgba(255,255,255,0.78))`
@@ -64,9 +64,9 @@ export function ThemeRankPreview({
               }}
             />
 
-            <div className={`absolute inset-y-0 flex items-center ${circleAlign === "end" ? "right-4 sm:right-5 md:right-6" : "left-4 sm:left-5 md:left-6"}`}>
+            <div className={`absolute inset-y-0 flex items-center ${circleAlign === "end" ? "right-[0.95rem] sm:right-[1.15rem] md:right-[1.35rem]" : "left-[0.95rem] sm:left-[1.15rem] md:left-[1.35rem]"}`}>
               <div
-                className="leaderboard-rank-bob relative flex h-12 w-12 items-center justify-center rounded-full border shadow-[0_12px_28px_-18px_rgba(0,0,0,0.35)] transition-transform duration-300 group-hover:scale-105 md:h-14 md:w-14"
+                className="leaderboard-rank-bob relative flex h-10 w-10 items-center justify-center rounded-full border shadow-[0_12px_28px_-18px_rgba(0,0,0,0.35)] transition-transform duration-300 group-hover:scale-105 md:h-12 md:w-12"
                 style={{
                   background: `radial-gradient(circle at 30% 30%, ${secondary}, ${primary})`,
                   borderColor: `${tertiary}66`,
