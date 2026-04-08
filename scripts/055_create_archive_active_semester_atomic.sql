@@ -82,6 +82,14 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION public.archive_active_semester_atomic(
+  uuid,
+  text,
+  timestamptz,
+  date,
+  jsonb,
+  jsonb
+) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.archive_active_semester_atomic(
   uuid,
   text,
@@ -89,4 +97,4 @@ GRANT EXECUTE ON FUNCTION public.archive_active_semester_atomic(
   date,
   jsonb,
   jsonb
-) TO anon, authenticated, service_role;
+) TO service_role;

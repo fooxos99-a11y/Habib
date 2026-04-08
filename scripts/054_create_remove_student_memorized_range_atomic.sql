@@ -61,6 +61,19 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION public.remove_student_memorized_range_atomic(
+  uuid,
+  uuid,
+  boolean,
+  integer,
+  integer,
+  integer,
+  integer,
+  jsonb,
+  integer[],
+  integer[],
+  integer[]
+) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.remove_student_memorized_range_atomic(
   uuid,
   uuid,
@@ -73,4 +86,4 @@ GRANT EXECUTE ON FUNCTION public.remove_student_memorized_range_atomic(
   integer[],
   integer[],
   integer[]
-) TO anon, authenticated, service_role;
+) TO service_role;

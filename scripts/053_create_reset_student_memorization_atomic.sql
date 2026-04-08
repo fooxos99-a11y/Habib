@@ -45,4 +45,5 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.reset_student_memorization_atomic(uuid, uuid) TO anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.reset_student_memorization_atomic(uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.reset_student_memorization_atomic(uuid, uuid) TO service_role;

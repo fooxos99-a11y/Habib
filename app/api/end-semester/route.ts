@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 import { requireRoles } from "@/lib/auth/guards"
 import { getScheduledSessionProgress } from "@/lib/plan-progress"
@@ -138,6 +139,7 @@ export async function POST(request: Request) {
     }
 
     const supabase = await createClient()
+    const adminSupabase = createAdminClient()
     const activeSemester = await getOrCreateActiveSemester(supabase)
     const body = await request.json()
     const semesterName = String(body.name || "").trim()
@@ -281,7 +283,7 @@ export async function POST(request: Request) {
       generatedAt: archivedAt,
     })
 
-    const { error: archiveError } = await supabase.rpc("archive_active_semester_atomic", {
+    const { error: archiveError } = await adminSupabase.rpc("archive_active_semester_atomic", {
       p_active_semester_id: activeSemester.id,
       p_archived_semester_name: semesterName,
       p_archived_at: archivedAt,

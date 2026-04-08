@@ -78,6 +78,20 @@ export function GlobalEndSemesterDialog() {
             {message.text}
           </div>
         )}
+        <div className="space-y-2">
+          <label htmlFor="semester-name" className="block text-sm font-medium text-[#1a2332]">
+            اسم الفصل المؤرشف
+          </label>
+          <Input
+            id="semester-name"
+            value={semesterName}
+            onChange={(event) => setSemesterName(event.target.value)}
+            placeholder="مثال: الفصل الأول 1448"
+            disabled={isSubmitting}
+            className="text-right"
+            dir="rtl"
+          />
+        </div>
         <div className="flex items-center justify-between gap-2">
           <Button
             variant="outline"

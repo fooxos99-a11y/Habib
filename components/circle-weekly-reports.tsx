@@ -11,7 +11,7 @@ import { getPlanForDate, groupPlansByStudent } from "@/lib/plan-history";
 import { getOrCreateActiveSemester, isMissingSemestersTable, isNoActiveSemesterError } from "@/lib/semesters";
 import { getStudyWeekStart, isStudyDay } from "@/lib/study-calendar";
 import { createClient } from "@/lib/supabase/client";
-import { calculatePreviousMemorizedPages, resolvePlanReviewPagesPreference, resolvePlanReviewPoolPages } from "@/lib/quran-data";
+import { calculatePreviousMemorizedPages, resolvePlanReviewPagesForDate, resolvePlanReviewPoolPages } from "@/lib/quran-data";
 import { isPassingMemorizationLevel, type EvaluationLevelValue } from "@/lib/student-attendance";
 
 type StudentRow = {
@@ -32,6 +32,10 @@ type PlanRow = {
   muraajaa_pages: number | null;
   rabt_pages: number | null;
   review_distribution_mode?: "fixed" | "weekly" | null;
+  muraajaa_mode?: "daily_fixed" | "weekly_distributed" | null;
+  weekly_muraajaa_min_daily_pages?: number | null;
+  weekly_muraajaa_start_day?: number | null;
+  weekly_muraajaa_end_day?: number | null;
   has_previous?: boolean | null;
   prev_start_surah?: number | null;
   prev_start_verse?: number | null;
@@ -405,7 +409,7 @@ export function CircleWeeklyReports({ circleName, backHref, backLabel }: CircleW
 
         let plansQuery = supabase
           .from("student_plans")
-          .select("id, student_id, start_date, created_at, daily_pages, muraajaa_pages, rabt_pages, review_distribution_mode, has_previous, prev_start_surah, prev_start_verse, prev_end_surah, prev_end_verse, completed_juzs")
+          .select("id, student_id, start_date, created_at, daily_pages, muraajaa_pages, rabt_pages, review_distribution_mode, muraajaa_mode, weekly_muraajaa_min_daily_pages, weekly_muraajaa_start_day, weekly_muraajaa_end_day, has_previous, prev_start_surah, prev_start_verse, prev_end_surah, prev_end_verse, completed_juzs")
           .in("student_id", studentIds);
 
         let attendanceRangeQuery = supabase
@@ -526,6 +530,7 @@ export function CircleWeeklyReports({ circleName, backHref, backLabel }: CircleW
               const dailyReport = reportsByDate.get(date);
               const status = getDayStatus(record, dailyReport);
               const { memorizationDone, reviewDone, linkingDone } = getDailyCompletionFlags(record, dailyReport);
+              const priorReviewCompletedCount = reviewCompletedCount;
 
               if (plan?.id && plan.id !== activePlanId) {
                 memorizedPoolPages = Math.max(memorizedPoolPages, calculatePreviousMemorizedPages(plan));
@@ -544,21 +549,9 @@ export function CircleWeeklyReports({ circleName, backHref, backLabel }: CircleW
                 memorizationCompletedCount += 1;
               }
 
-              if (reviewDone) {
-                reviewCompletedCount += 1;
-              }
-
-              if (linkingDone) {
-                linkingCompletedCount += 1;
-              }
-
-              if (hasPassingTikrar(record)) {
-                tikrarCompletedCount += 1;
-              }
-
               if (plan) {
                 const reviewPoolPages = resolvePlanReviewPoolPages(plan, memorizedPoolPages);
-                const reviewPages = resolvePlanReviewPagesPreference(plan, reviewPoolPages);
+                const reviewPages = resolvePlanReviewPagesForDate(plan, reviewPoolPages, priorReviewCompletedCount, date);
                 const tiePages = Math.min(Number(plan.rabt_pages ?? 10), Math.max(0, memorizedPoolPages));
 
                 if (reviewDone) {
@@ -574,6 +567,18 @@ export function CircleWeeklyReports({ circleName, backHref, backLabel }: CircleW
                   memorized += dailyPages;
                   memorizedPoolPages += dailyPages;
                 }
+              }
+
+              if (reviewDone) {
+                reviewCompletedCount += 1;
+              }
+
+              if (linkingDone) {
+                linkingCompletedCount += 1;
+              }
+
+              if (hasPassingTikrar(record)) {
+                tikrarCompletedCount += 1;
               }
 
               return { date, status };

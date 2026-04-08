@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
 import {
   ensureStudentAccess,
@@ -461,6 +462,7 @@ export async function PATCH(request: Request) {
     }
 
     const supabase = await createClient()
+    const adminSupabase = createAdminClient()
     const body = await request.json()
     const {
       id,
@@ -512,7 +514,7 @@ export async function PATCH(request: Request) {
       }
 
       const activeSemester = await getOrCreateActiveSemester(supabase)
-      const { data, error } = await supabase.rpc("reset_student_memorization_atomic", {
+      const { data, error } = await adminSupabase.rpc("reset_student_memorization_atomic", {
         p_student_id: studentId,
         p_semester_id: activeSemester.id,
       })
@@ -567,7 +569,7 @@ export async function PATCH(request: Request) {
       const nextCurrentJuzs = Array.from(juzCoverage.currentJuzs).sort((left, right) => left - right)
       const removedCompletedJuzs = previousCompletedJuzs.filter((juzNumber) => !nextCompletedJuzs.includes(juzNumber))
 
-      const { data, error } = await supabase.rpc("remove_student_memorized_range_atomic", {
+      const { data, error } = await adminSupabase.rpc("remove_student_memorized_range_atomic", {
         p_student_id: studentId,
         p_semester_id: activeSemester.id,
         p_has_previous: legacyFields.has_previous,

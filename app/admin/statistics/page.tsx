@@ -12,6 +12,7 @@ import { useAdminAuth } from "@/hooks/use-admin-auth";
 import { getStudyWeekEnd, getStudyWeekStart, isStudyDay } from "@/lib/study-calendar";
 import { createClient } from "@/lib/supabase/client";
 import { getPlanForDate, groupPlansByStudent } from "@/lib/plan-history";
+import { calculatePreviousMemorizedPages, resolvePlanReviewPagesForDate, resolvePlanReviewPoolPages } from "@/lib/quran-data";
 import {
   applyAttendancePointsAdjustment,
   calculateTotalEvaluationPoints,
@@ -57,6 +58,25 @@ type PlanRow = {
   muraajaa_pages: number | null;
   rabt_pages: number | null;
   review_distribution_mode?: "fixed" | "weekly" | null;
+  muraajaa_mode?: "daily_fixed" | "weekly_distributed" | null;
+  weekly_muraajaa_min_daily_pages?: number | null;
+  weekly_muraajaa_start_day?: number | null;
+  weekly_muraajaa_end_day?: number | null;
+  has_previous?: boolean | null;
+  prev_start_surah?: number | null;
+  prev_start_verse?: number | null;
+  prev_end_surah?: number | null;
+  prev_end_verse?: number | null;
+  previous_memorization_ranges?: unknown[] | null;
+  completed_juzs?: number[] | null;
+};
+
+type DailyReportRow = {
+  student_id: string;
+  report_date: string;
+  memorization_done: boolean;
+  review_done: boolean;
+  linking_done: boolean;
 };
 
 type EvaluationRecord = {
@@ -330,6 +350,16 @@ function getEvaluationRecord(value: AttendanceRow["evaluations"]): EvaluationRec
   }
 
   return value ?? {};
+}
+
+function getDailyCompletionFlags(record?: AttendanceRow, dailyReport?: DailyReportRow) {
+  const evaluation = record ? getEvaluationRecord(record.evaluations) : {};
+
+  return {
+    memorizationDone: Boolean(dailyReport?.memorization_done) || isPassingMemorizationLevel(evaluation.hafiz_level ?? null),
+    reviewDone: Boolean(dailyReport?.review_done) || isPassingMemorizationLevel(evaluation.samaa_level ?? null),
+    linkingDone: Boolean(dailyReport?.linking_done) || isPassingMemorizationLevel(evaluation.rabet_level ?? null),
+  };
 }
 
 function createStudentSummary(id: string, name: string, circleName: string): StudentSummary {
@@ -700,10 +730,14 @@ export default function StatisticsPage() {
         }
       }
 
-      let plansQuery = supabase.from("student_plans").select("id, student_id, start_date, created_at, daily_pages, muraajaa_pages, rabt_pages");
+      let plansQuery = supabase.from("student_plans").select("id, student_id, start_date, created_at, daily_pages, muraajaa_pages, rabt_pages, review_distribution_mode, muraajaa_mode, weekly_muraajaa_min_daily_pages, weekly_muraajaa_start_day, weekly_muraajaa_end_day, has_previous, prev_start_surah, prev_start_verse, prev_end_surah, prev_end_verse, previous_memorization_ranges, completed_juzs");
       if (activeSemesterId) {
         plansQuery = plansQuery.eq("semester_id", activeSemesterId);
       }
+
+      let dailyReportsQuery = supabase
+        .from("student_daily_reports")
+        .select("student_id, report_date, memorization_done, review_done, linking_done");
 
       const [studentsResult, circlesResult, plansResult] = await Promise.all([
         supabase.from("students").select("id, name, halaqah"),
@@ -740,17 +774,27 @@ export default function StatisticsPage() {
         attendanceQuery = attendanceQuery
           .gte("date", formatDateForQuery(start))
           .lte("date", formatDateForQuery(end));
+
+        dailyReportsQuery = dailyReportsQuery
+          .gte("report_date", formatDateForQuery(start))
+          .lte("report_date", formatDateForQuery(end));
       }
 
-      const attendanceResult = await attendanceQuery;
+      const [attendanceResult, dailyReportsResult] = await Promise.all([attendanceQuery, dailyReportsQuery]);
 
       if (attendanceResult.error) {
         throw attendanceResult.error;
       }
 
+      const dailyReportsTableMissing = dailyReportsResult.error?.code === "PGRST205" && String(dailyReportsResult.error.message || "").includes("student_daily_reports");
+      if (dailyReportsResult.error && !dailyReportsTableMissing) {
+        throw dailyReportsResult.error;
+      }
+
       const students = (studentsResult.data ?? []) as StudentRow[];
       const circles = (circlesResult.data ?? []) as CircleRow[];
       const plans = (plansResult.data ?? []) as PlanRow[];
+      const dailyReports = (dailyReportsResult.data ?? []) as DailyReportRow[];
       const plansByStudent = groupPlansByStudent(plans);
       const plannedStudentIds = new Set(Array.from(plansByStudent.keys()));
       const attendance = ((attendanceResult.data ?? []) as AttendanceRow[]).filter(
@@ -767,6 +811,13 @@ export default function StatisticsPage() {
       const studentCircles = new Map(students.map((student) => [student.id, student.halaqah?.trim() || TEXT.unknownCircle]));
       const studentStats = new Map<string, StudentSummary>();
       const circleStats = new Map<string, CircleSummary>();
+      const dailyReportsByStudentDate = new Map<string, DailyReportRow>();
+      const memorizedPoolByStudent = new Map<string, number>();
+      const reviewCompletedByStudent = new Map<string, number>();
+
+      for (const report of dailyReports) {
+        dailyReportsByStudentDate.set(`${report.student_id}|${report.report_date}`, report);
+      }
 
       for (const studentId of plannedStudentIds) {
         const circleName = studentCircles.get(studentId) ?? TEXT.unknownCircle;
@@ -825,8 +876,14 @@ export default function StatisticsPage() {
         const dailyPages = Number(plan?.daily_pages ?? 1);
         const status = record.status ?? "";
         const isPresent = status === "present" || status === "late";
-        const reviewPages = Math.max(0, Number(plan?.muraajaa_pages ?? 0));
-        const tiePages = Math.max(0, Number(plan?.rabt_pages ?? 0));
+        const dailyReport = dailyReportsByStudentDate.get(`${studentId}|${record.date}`);
+        const { reviewDone, linkingDone } = getDailyCompletionFlags(record, dailyReport);
+        const memorizedPoolPages = memorizedPoolByStudent.has(studentId)
+          ? (memorizedPoolByStudent.get(studentId) ?? 0)
+          : calculatePreviousMemorizedPages(plan);
+        const reviewPoolPages = resolvePlanReviewPoolPages(plan, memorizedPoolPages);
+        const reviewPages = resolvePlanReviewPagesForDate(plan, reviewPoolPages, reviewCompletedByStudent.get(studentId) ?? 0, record.date);
+        const tiePages = Math.min(Number(plan?.rabt_pages ?? 0), Math.max(0, memorizedPoolPages));
 
         studentSummary.maxPoints += MAX_EVALUATION_POINTS_PER_STUDY_DAY;
         circleSummary.totalRecords += 1;
@@ -850,18 +907,23 @@ export default function StatisticsPage() {
           circleSummary.passedTikrarSegments += 1;
         }
 
-        if (isPassingMemorizationLevel(evaluation.samaa_level ?? null)) {
+        if (reviewDone) {
           circleSummary.passedReviewSegments += 1;
           studentSummary.revised += reviewPages;
           circleSummary.revised += reviewPages;
           revisedTotal += reviewPages;
+          reviewCompletedByStudent.set(studentId, (reviewCompletedByStudent.get(studentId) ?? 0) + 1);
         }
 
-        if (isPassingMemorizationLevel(evaluation.rabet_level ?? null)) {
+        if (linkingDone) {
           circleSummary.passedTiedSegments += 1;
           studentSummary.tied += tiePages;
           circleSummary.tied += tiePages;
           tiedTotal += tiePages;
+        }
+
+        if (isPassingMemorizationLevel(evaluation.hafiz_level ?? null)) {
+          memorizedPoolByStudent.set(studentId, memorizedPoolPages + dailyPages);
         }
 
         const earnedPoints = applyAttendancePointsAdjustment(calculateTotalEvaluationPoints(evaluation), status);

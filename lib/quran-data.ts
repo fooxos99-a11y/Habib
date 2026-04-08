@@ -1142,6 +1142,54 @@ export function resolvePlanReviewPagesPreference(plan: {
   return Math.min(muraajaaPref, availableReviewPages)
 }
 
+export function resolvePlanReviewPagesForDate(plan: {
+  muraajaa_pages?: number | null
+  review_distribution_mode?: "fixed" | "weekly" | null
+  muraajaa_mode?: "daily_fixed" | "weekly_distributed" | null
+  weekly_muraajaa_min_daily_pages?: number | null
+  weekly_muraajaa_start_day?: number | null
+  weekly_muraajaa_end_day?: number | null
+}, reviewPoolPages: number, reviewCompletedDays = 0, date?: string | null): number {
+  const availableReviewPages = Math.max(0, Number(reviewPoolPages) || 0)
+  if (availableReviewPages <= 0) {
+    return 0
+  }
+
+  if (plan.muraajaa_mode === "weekly_distributed") {
+    const weeklyReviewPlan = buildWeeklyReviewPlan({
+      totalPages: availableReviewPages,
+      minDailyPages: Number(plan.weekly_muraajaa_min_daily_pages),
+      startDay: Number(plan.weekly_muraajaa_start_day),
+      endDay: Number(plan.weekly_muraajaa_end_day),
+    })
+
+    if (weeklyReviewPlan.dayIndices.length === 0) {
+      return 0
+    }
+
+    const referenceDate = typeof date === "string" && date.trim().length > 0
+      ? new Date(`${date}T12:00:00+03:00`)
+      : new Date()
+
+    if (Number.isNaN(referenceDate.getTime())) {
+      return 0
+    }
+
+    const weekdayIndex = getSaudiWeekdayIndex(referenceDate)
+    if (!weeklyReviewPlan.dayIndices.includes(weekdayIndex)) {
+      return 0
+    }
+
+    const allocationIndex = Math.max(0, Math.floor(Number(reviewCompletedDays) || 0)) % weeklyReviewPlan.dayIndices.length
+    return Math.min(availableReviewPages, Math.max(0, Number(weeklyReviewPlan.allocations[allocationIndex]?.pages) || 0))
+  }
+
+  return resolvePlanReviewPagesPreference({
+    muraajaa_pages: plan.muraajaa_pages,
+    review_distribution_mode: plan.review_distribution_mode,
+  }, availableReviewPages)
+}
+
 export function calculateQuranMemorizationProgress(plan: {
   total_pages?: number | null
   daily_pages?: number | null
