@@ -381,7 +381,7 @@ export default function BackgroundsPage() {
             العودة للمتجر
           </button>
           <h1 className="text-4xl font-bold text-[#1a2332] mb-4">الخلفيات</h1>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 gap-4 min-[560px]:grid-cols-2 md:gap-6">
             {[...BACKGROUNDS]
               .sort((a, b) => a.price - b.price || a.name.localeCompare(b.name, "ar"))
               .map((background, index) => {
@@ -402,13 +402,13 @@ export default function BackgroundsPage() {
                       <Check className="w-5 h-5 text-white" />
                     </div>
                   )}
-                  <CardContent className="p-6">
+                  <CardContent className="p-4 sm:p-6">
                     <div className="mb-4">{renderThemePreview(background.themeValue)}</div>
-                    <h3 className="text-xl font-bold text-[#1a2332] mb-2">{background.name}</h3>
-                    <div className="flex items-center justify-between">
+                    <h3 className="mb-2 text-lg font-bold text-[#1a2332] sm:text-xl">{background.name}</h3>
+                    <div className="flex flex-col gap-3 min-[430px]:flex-row min-[430px]:items-center min-[430px]:justify-between">
                       <div className="flex items-center gap-2">
                         <Star className="w-5 h-5 text-[#3453a7]" />
-                        <span className="text-2xl font-bold text-[#1a2332]">
+                        <span className="text-xl font-bold text-[#1a2332] sm:text-2xl">
                           {background.isFree ? "مجاني" : background.price}
                         </span>
                       </div>
@@ -417,15 +417,17 @@ export default function BackgroundsPage() {
                           isActive ? null : waitingActivation ? handleActivate(background) : handlePurchase(background)
                         }
                         className={
-                          isActive
-                            ? "bg-[#22C55E] cursor-default text-white hover:bg-[#22C55E]"
-                            : waitingActivation
-                              ? "bg-[#3453a7] hover:bg-[#4f73d1] text-white"
-                              : isOwned
+                          `${
+                            isActive
+                              ? "bg-[#22C55E] cursor-default text-white hover:bg-[#22C55E]"
+                              : waitingActivation
                                 ? "bg-[#3453a7] hover:bg-[#4f73d1] text-white"
-                                : canAfford
+                                : isOwned
                                   ? "bg-[#3453a7] hover:bg-[#4f73d1] text-white"
-                                  : "bg-gray-300 cursor-not-allowed text-gray-600"
+                                  : canAfford
+                                    ? "bg-[#3453a7] hover:bg-[#4f73d1] text-white"
+                                    : "bg-gray-300 cursor-not-allowed text-gray-600"
+                          } w-full min-[430px]:w-auto`
                         }
                       >
                         {isActive
