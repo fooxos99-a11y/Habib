@@ -6,9 +6,11 @@ import { getExamPortionSettings, normalizeExamPortionSettings } from "@/lib/exam
 import { getExamPortionLabel, getJuzNumberForPortion, isValidExamPortionNumber, normalizeExamPortionType } from "@/lib/exam-portions"
 import { formatExamPortionLabel, getEligibleExamPortions } from "@/lib/student-exams"
 import { getCompletedMemorizationDays } from "@/lib/plan-progress"
+import { insertNotificationsAndSendPush } from "@/lib/push-notifications"
 import { getSaudiDateString } from "@/lib/saudi-time"
 import { getContiguousCompletedJuzRange, getNormalizedCompletedJuzs, getPendingMasteryJuzs, hasScatteredCompletedJuzs } from "@/lib/quran-data"
 import { getOrCreateActiveSemester, isMissingSemestersTable } from "@/lib/semesters"
+import { buildExamAppNotificationMessage, enqueueWhatsAppMessage, fillExamWhatsAppTemplate, getExamWhatsAppTemplates } from "@/lib/whatsapp-notification-templates"
 
 const ADVANCING_MEMORIZATION_LEVELS = ["excellent", "good", "very_good"]
 
@@ -48,6 +50,15 @@ function parseCount(value: unknown) {
 	}
 
 	return Math.floor(parsed)
+}
+
+function formatExamDate(dateValue: string) {
+	const [year, month, day] = String(dateValue || "").split("-")
+	if (!year || !month || !day) {
+		return dateValue
+	}
+
+	return `${year}/${month}/${day}`
 }
 
 function hasCompletedMemorization(record: any) {
@@ -334,7 +345,7 @@ export async function POST(request: Request) {
 
 		const { data: student, error: studentError } = await supabase
 			.from("students")
-			.select("id, name, halaqah, completed_juzs, current_juzs, memorized_ranges, memorized_start_surah, memorized_start_verse, memorized_end_surah, memorized_end_verse")
+			.select("id, name, halaqah, account_number, guardian_phone, completed_juzs, current_juzs, memorized_ranges, memorized_start_surah, memorized_start_verse, memorized_end_surah, memorized_end_verse")
 			.eq("id", studentId)
 			.maybeSingle()
 
@@ -502,7 +513,51 @@ export async function POST(request: Request) {
 			console.error("[exams][POST] complete schedule error", scheduleCompletionError)
 		}
 
-		return NextResponse.json({ success: true, exam: data, score, requiresRememorization, resetWarning }, { status: 201 })
+		let notificationWarning: string | null = null
+
+		try {
+			const examWhatsAppTemplates = await getExamWhatsAppTemplates(supabase)
+			const statusLabel = score.passed ? "مجتاز" : "غير مجتاز"
+			const formattedDate = formatExamDate(String(data.exam_date || examDate || getSaudiDateString()))
+
+			const appMessage = buildExamAppNotificationMessage("result", {
+				studentName: student.name || "الطالب",
+				date: formattedDate,
+				portion: examPortionLabel,
+				halaqah: student.halaqah,
+			}, examWhatsAppTemplates)
+
+			await insertNotificationsAndSendPush(supabase, [{
+				user_account_number: String(student.account_number || ""),
+				message: appMessage,
+				url: "/exams",
+				tag: `exam-result-${data.id}`,
+			}])
+
+			const whatsappMessage = fillExamWhatsAppTemplate(examWhatsAppTemplates.result, {
+				studentName: student.name || "الطالب",
+				date: formattedDate,
+				portion: examPortionLabel,
+				halaqah: student.halaqah,
+				score: score.finalScore,
+				maxScore: settings.maxScore,
+				status: statusLabel,
+				testedBy: testedByName,
+				notes: notes ? ` الملاحظات: ${notes}` : "",
+			})
+
+			await enqueueWhatsAppMessage(supabase, {
+				phoneNumber: student.guardian_phone,
+				message: whatsappMessage,
+				userId: session.id,
+				dedupeDate: String(data.exam_date || examDate || getSaudiDateString()),
+			})
+		} catch (notificationError) {
+			console.error("[exams][POST] result notification error", notificationError)
+			notificationWarning = "تم حفظ التقييم لكن تعذر إرسال إشعار النتيجة."
+		}
+
+		return NextResponse.json({ success: true, exam: data, score, requiresRememorization, resetWarning, notificationWarning }, { status: 201 })
 	} catch (error) {
 		console.error("[exams][POST]", error)
 		if (isMissingSemestersTable(error)) {

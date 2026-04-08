@@ -10,6 +10,7 @@ export type ExamWhatsAppTemplates = {
   create: string
   update: string
   cancel: string
+  result: string
 }
 
 export type ExamNotificationKind = keyof ExamWhatsAppTemplates
@@ -22,6 +23,7 @@ export const DEFAULT_EXAM_WHATSAPP_TEMPLATES: ExamWhatsAppTemplates = {
   create: "تنبيه من {halaqah}: تم تحديد اختبار للطالب {name} في {portion} بتاريخ {date}.",
   update: "تنبيه من {halaqah}: تم تحديث موعد اختبار الطالب {name} في {portion} إلى تاريخ {date}.",
   cancel: "تنبيه من {halaqah}: تم إلغاء موعد اختبار الطالب {name} في {portion} بتاريخ {date}.",
+  result: "نتيجة اختبار {name} في {halaqah}: {portion} بتاريخ {date}. النتيجة: {score} من {max_score}. الحالة: {status}. المختبر: {tested_by}.{notes}",
 }
 
 export const DEFAULT_ABSENCE_WHATSAPP_TEMPLATES: AbsenceNotificationTemplates = {
@@ -38,6 +40,7 @@ export function normalizeExamWhatsAppTemplates(value: unknown): ExamWhatsAppTemp
     create: typeof candidate.create === "string" && candidate.create.trim() ? candidate.create.trim() : DEFAULT_EXAM_WHATSAPP_TEMPLATES.create,
     update: typeof candidate.update === "string" && candidate.update.trim() ? candidate.update.trim() : DEFAULT_EXAM_WHATSAPP_TEMPLATES.update,
     cancel: typeof candidate.cancel === "string" && candidate.cancel.trim() ? candidate.cancel.trim() : DEFAULT_EXAM_WHATSAPP_TEMPLATES.cancel,
+    result: typeof candidate.result === "string" && candidate.result.trim() ? candidate.result.trim() : DEFAULT_EXAM_WHATSAPP_TEMPLATES.result,
   }
 }
 
@@ -115,12 +118,22 @@ export function fillExamWhatsAppTemplate(template: string, params: {
   date: string
   portion: string
   halaqah?: string | null
+  score?: string | number | null
+  maxScore?: string | number | null
+  status?: string | null
+  testedBy?: string | null
+  notes?: string | null
 }) {
   return template
     .replaceAll("{name}", params.studentName)
     .replaceAll("{date}", params.date)
     .replaceAll("{portion}", params.portion)
     .replaceAll("{halaqah}", params.halaqah || "")
+    .replaceAll("{score}", params.score == null ? "" : String(params.score))
+    .replaceAll("{max_score}", params.maxScore == null ? "" : String(params.maxScore))
+    .replaceAll("{status}", params.status || "")
+    .replaceAll("{tested_by}", params.testedBy || "")
+    .replaceAll("{notes}", params.notes || "")
 }
 
 export function buildExamAppNotificationMessage(
@@ -137,6 +150,10 @@ export function buildExamAppNotificationMessage(
   const selectedTemplate = normalizedTemplates[kind]
 
   if (selectedTemplate === DEFAULT_EXAM_WHATSAPP_TEMPLATES[kind]) {
+    if (kind === "result") {
+      return `تم حفظ نتيجة اختبارك في ${params.portion} بتاريخ ${params.date}.`
+    }
+
     if (kind === "update") {
       return `تم تحديث موعد اختبارك في ${params.portion} إلى تاريخ ${params.date}.`
     }

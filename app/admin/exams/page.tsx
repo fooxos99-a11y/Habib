@@ -85,6 +85,7 @@ type NotificationTemplatesForm = {
   create: string
   update: string
   cancel: string
+  result: string
 }
 
 type StudentPlanProgressState = {
@@ -148,6 +149,7 @@ const DEFAULT_NOTIFICATION_TEMPLATES_FORM: NotificationTemplatesForm = {
   create: DEFAULT_EXAM_WHATSAPP_TEMPLATES.create,
   update: DEFAULT_EXAM_WHATSAPP_TEMPLATES.update,
   cancel: DEFAULT_EXAM_WHATSAPP_TEMPLATES.cancel,
+  result: DEFAULT_EXAM_WHATSAPP_TEMPLATES.result,
 }
 
 const DEFAULT_SCHEDULE_FORM: ScheduleExamForm = {
@@ -179,6 +181,7 @@ function toNotificationTemplatesForm(templates: ExamWhatsAppTemplates): Notifica
     create: templates.create,
     update: templates.update,
     cancel: templates.cancel,
+    result: templates.result,
   }
 }
 
@@ -689,13 +692,14 @@ export default function AdminExamsPage() {
       const finalScore = data.score?.finalScore ?? scorePreview.finalScore
       const passed = Boolean(data.score?.passed)
       const resetWarning = typeof data.resetWarning === "string" ? data.resetWarning : ""
+      const notificationWarning = typeof data.notificationWarning === "string" ? data.notificationWarning : ""
 
       if (passed) {
-        await showAlert(`تم حفظ الاختبار بنتيجة ${finalScore} من ${settingsPreview.maxScore}`, "نجاح")
+        await showAlert(notificationWarning || `تم حفظ الاختبار بنتيجة ${finalScore} من ${settingsPreview.maxScore}`, notificationWarning ? "تنبيه" : "نجاح")
       } else if (data.requiresRememorization) {
-        await showAlert(`تم تسجيل الرسوب بنتيجة ${finalScore} من ${settingsPreview.maxScore}، وتم تحويل هذا ${portionUnitLabel} إلى ${portionUnitLabel} يحتاج إعادة حفظ مع استمرار الخطة الحالية.`, "تنبيه")
+        await showAlert(notificationWarning || `تم تسجيل الرسوب بنتيجة ${finalScore} من ${settingsPreview.maxScore}، وتم تحويل هذا ${portionUnitLabel} إلى ${portionUnitLabel} يحتاج إعادة حفظ مع استمرار الخطة الحالية.`, "تنبيه")
       } else {
-        await showAlert(resetWarning || `تم تسجيل الرسوب بنتيجة ${finalScore} من ${settingsPreview.maxScore}.`, "تنبيه")
+        await showAlert(notificationWarning || resetWarning || `تم تسجيل الرسوب بنتيجة ${finalScore} من ${settingsPreview.maxScore}.`, "تنبيه")
       }
 
       setForm((current) => ({
@@ -1149,14 +1153,14 @@ export default function AdminExamsPage() {
                           </button>
                         </TooltipTrigger>
                         <TooltipContent side="left" sideOffset={8} className="max-w-sm rounded-xl bg-[#1a2332] px-4 py-3 text-right text-xs leading-6 text-white">
-                          المتغيرات المتاحة: <span className="font-bold">{'{name}'}</span> اسم الطالب، <span className="font-bold">{'{portion}'}</span> الجزء أو النطاق، <span className="font-bold">{'{date}'}</span> التاريخ، <span className="font-bold">{'{halaqah}'}</span> اسم الحلقة.
+                          المتغيرات المتاحة: <span className="font-bold">{'{name}'}</span> اسم الطالب، <span className="font-bold">{'{portion}'}</span> الجزء أو النطاق، <span className="font-bold">{'{date}'}</span> التاريخ، <span className="font-bold">{'{halaqah}'}</span> اسم الحلقة، <span className="font-bold">{'{score}'}</span> الدرجة، <span className="font-bold">{'{max_score}'}</span> أصل الدرجة، <span className="font-bold">{'{status}'}</span> الحالة، <span className="font-bold">{'{tested_by}'}</span> المختبر، <span className="font-bold">{'{notes}'}</span> الملاحظات.
                         </TooltipContent>
                       </Tooltip>
                     </div>
                     <p className="text-sm text-slate-500">يتم الإرسال للطالب عبر المنصة، ولولي الأمر عبر الواتس.</p>
                   </div>
 
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                     <div className="space-y-2 text-right">
                       <Label className="text-sm font-black text-[#334155]">قالب إنشاء الموعد</Label>
                       <Textarea value={notificationTemplatesForm.create} onChange={(event) => handleNotificationTemplateChange("create", event.target.value)} className="min-h-[88px] rounded-2xl border-[#d7e3f2] bg-white text-sm leading-6" />
@@ -1168,6 +1172,10 @@ export default function AdminExamsPage() {
                     <div className="space-y-2 text-right">
                       <Label className="text-sm font-black text-[#334155]">قالب إلغاء الموعد</Label>
                       <Textarea value={notificationTemplatesForm.cancel} onChange={(event) => handleNotificationTemplateChange("cancel", event.target.value)} className="min-h-[88px] rounded-2xl border-[#d7e3f2] bg-white text-sm leading-6" />
+                    </div>
+                    <div className="space-y-2 text-right">
+                      <Label className="text-sm font-black text-[#334155]">قالب نتيجة التقييم</Label>
+                      <Textarea value={notificationTemplatesForm.result} onChange={(event) => handleNotificationTemplateChange("result", event.target.value)} className="min-h-[88px] rounded-2xl border-[#d7e3f2] bg-white text-sm leading-6" />
                     </div>
                   </div>
                 </div>
