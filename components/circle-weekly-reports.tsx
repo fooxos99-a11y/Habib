@@ -744,16 +744,6 @@ export function CircleWeeklyReports({ circleName, backHref, backLabel }: CircleW
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between gap-4 border-t border-dashed border-[#e5e7eb] pt-4 text-sm font-black">
-                        <div className="flex items-center gap-2 text-[#ef4444]">
-                          <span className="h-2.5 w-2.5 rounded-full bg-[#ef4444]" />
-                          <span>{TEXT.weeklyAbsent}: {formatCount(student.absentCount)}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-[#22c55e]">
-                          <span className="h-2.5 w-2.5 rounded-full bg-[#22c55e]" />
-                          <span>{TEXT.weeklyAttendance}: {formatCount(student.presentCount)}</span>
-                        </div>
-                      </div>
                     </div>
                   </article>
                 ))}

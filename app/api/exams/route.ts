@@ -8,7 +8,7 @@ import { formatExamPortionLabel, getEligibleExamPortions } from "@/lib/student-e
 import { getScheduledSessionProgress } from "@/lib/plan-progress"
 import { insertNotificationsAndSendPush } from "@/lib/push-notifications"
 import { getSaudiDateString } from "@/lib/saudi-time"
-import { getContiguousCompletedJuzRange, getNormalizedCompletedJuzs, getPendingMasteryJuzs, hasScatteredCompletedJuzs } from "@/lib/quran-data"
+import { getContiguousCompletedJuzRange, getJuzBounds, getNormalizedCompletedJuzs, getPendingMasteryJuzs, getStoredMemorizedRanges, hasScatteredCompletedJuzs, subtractMemorizedRangeFromRanges } from "@/lib/quran-data"
 import { getOrCreateActiveSemester, isMissingSemestersTable, isNoActiveSemesterError } from "@/lib/semesters"
 import { buildExamAppNotificationMessage, enqueueWhatsAppMessage, fillExamWhatsAppTemplate, getExamWhatsAppTemplates } from "@/lib/whatsapp-notification-templates"
 
@@ -151,6 +151,7 @@ async function markFailedJuzForRememorization(
 		id: string
 		completed_juzs?: number[] | null
 		current_juzs?: number[] | null
+		memorized_ranges?: unknown[] | null
 	},
 	failedJuzNumber: number,
 ) {
@@ -159,6 +160,16 @@ async function markFailedJuzForRememorization(
 		...getPendingMasteryJuzs(student.current_juzs, student.completed_juzs),
 		failedJuzNumber,
 	])).sort((left, right) => left - right)
+	const failedJuzBounds = getJuzBounds(failedJuzNumber)
+	const currentRanges = getStoredMemorizedRanges(student)
+	const nextRanges = failedJuzBounds
+		? subtractMemorizedRangeFromRanges(currentRanges, {
+			startSurahNumber: failedJuzBounds.startSurahNumber,
+			startVerseNumber: failedJuzBounds.startVerseNumber,
+			endSurahNumber: failedJuzBounds.endSurahNumber,
+			endVerseNumber: failedJuzBounds.endVerseNumber,
+		})
+		: currentRanges
 
 	const completedRange = hasScatteredCompletedJuzs(nextCompletedJuzs)
 		? null
@@ -169,6 +180,7 @@ async function markFailedJuzForRememorization(
 		.update({
 			completed_juzs: nextCompletedJuzs,
 			current_juzs: nextCurrentJuzs,
+			memorized_ranges: nextRanges.length > 0 ? nextRanges : null,
 			memorized_start_surah: completedRange?.startSurahNumber || null,
 			memorized_start_verse: completedRange?.startVerseNumber || null,
 			memorized_end_surah: completedRange?.endSurahNumber || null,

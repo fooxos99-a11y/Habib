@@ -1404,19 +1404,19 @@ export default function AdminExamsPage() {
                     معالجة الرسوب
                   </DialogTitle>
                   <DialogDescription className="pt-2 text-right text-sm font-semibold leading-7 text-[#64748b]">
-                    الطالب غير مجتاز في هذا {portionUnitLabel}. اختر هل تريد إعادته إلى إعادة الحفظ أو تحديد موعد إعادة اختبار جديد.
+                    الطالب راسب في هذا {portionUnitLabel}. هل تريد إعادة حفظه أم تجدوله على موعد آخر لإعادة اختباره؟
                   </DialogDescription>
                 </DialogHeader>
 
                 <div className="grid gap-5 overflow-y-auto px-6 py-6">
                   <div className="space-y-2 text-right">
-                    <Label className="text-sm font-black text-[#334155]">الإجراء بعد الرسوب</Label>
+                    <Label className="text-sm font-black text-[#334155]">ماذا تريد بعد الرسوب؟</Label>
                     <Select value={failedExamActionForm.action} onValueChange={(value) => setFailedExamActionForm((current) => ({ ...current, action: value === "rememorize" ? "rememorize" : "retest" }))} dir="rtl">
                       <SelectTrigger className="h-11 rounded-2xl border-[#d7e3f2] bg-white text-base font-bold">
                         <SelectValue placeholder="اختر الإجراء" />
                       </SelectTrigger>
                       <SelectContent dir="rtl">
-                        <SelectItem value="retest">إعادة الاختبار</SelectItem>
+                        <SelectItem value="retest">تحديد موعد آخر لإعادة الاختبار</SelectItem>
                         <SelectItem value="rememorize">إعادة الحفظ</SelectItem>
                       </SelectContent>
                     </Select>
@@ -1424,12 +1424,12 @@ export default function AdminExamsPage() {
 
                   {failedExamActionForm.action === "retest" ? (
                     <div className="space-y-2 text-right">
-                      <Label className="text-sm font-black text-[#334155]">تاريخ إعادة الاختبار</Label>
+                      <Label className="text-sm font-black text-[#334155]">موعد إعادة الاختبار</Label>
                       <Input type="date" value={failedExamActionForm.retestDate} onChange={(event) => setFailedExamActionForm((current) => ({ ...current, retestDate: event.target.value }))} className="h-11 rounded-2xl border-[#d7e3f2] bg-white text-base font-bold" />
                     </div>
                   ) : (
                     <div className="rounded-[22px] border border-[#fde68a] bg-[#fffbeb] px-4 py-4 text-right text-sm font-bold leading-7 text-[#92400e]">
-                      عند اختيار إعادة الحفظ سيتم إخراج هذا {portionUnitLabel} من المحفوظ المعتمد وإرجاعه إلى مسار الإتقان الحالي للطالب.
+                      عند اختيار إعادة الحفظ سيتم حذف هذا {portionUnitLabel} من المحفوظ الحالي، ولن يبقى محسوبًا ضمن الخطة الجارية، وسيظهر لاحقًا كجزء يحتاج إلى إتقان عند إضافة خطة جديدة للطالب.
                     </div>
                   )}
                 </div>
