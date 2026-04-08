@@ -40,7 +40,7 @@ export function ThemeRankPreview({
         <div className="absolute -left-10 bottom-0 h-24 w-24 rounded-full blur-3xl" style={{ backgroundColor: `${secondary}18` }} />
       </div>
 
-      <div className="relative z-10 p-2 sm:p-2.5 md:p-3">
+      <div className="relative z-10 p-1.5 sm:p-2 md:p-2.5">
         <div
           className="rounded-[20px] border shadow-[0_18px_40px_-24px_rgba(0,0,0,0.18)] backdrop-blur sm:rounded-[24px]"
           style={{
@@ -50,20 +50,7 @@ export function ThemeRankPreview({
               : `linear-gradient(135deg, rgba(255,255,255,0.74), ${primary}05, ${secondary}07)`,
           }}
         >
-          <div className="relative h-[76px] px-2.5 sm:h-[86px] sm:px-3 md:h-[96px] md:px-4">
-            <div
-              className="absolute inset-y-2.5 rounded-[16px] border sm:inset-y-3 sm:rounded-[18px] md:inset-y-3.5 md:rounded-[20px]"
-              style={{
-                left: circleAlign === "end" ? "0.75rem" : "3.1rem",
-                right: circleAlign === "end" ? "3.1rem" : "0.75rem",
-                borderColor: `${primary}18`,
-                background: premium
-                  ? `linear-gradient(135deg, rgba(255,255,255,0.64), ${primary}07, rgba(255,255,255,0.78))`
-                  : `linear-gradient(135deg, rgba(255,255,255,0.72), ${primary}04, ${secondary}06)`,
-                boxShadow: `inset 0 1px 0 rgba(255,255,255,0.55)`,
-              }}
-            />
-
+          <div className="relative h-[66px] px-2.5 sm:h-[76px] sm:px-3 md:h-[88px] md:px-4">
             <div className={`absolute inset-y-0 flex items-center ${circleAlign === "end" ? "right-[0.8rem] sm:right-[0.95rem] md:right-[1.1rem]" : "left-[0.8rem] sm:left-[0.95rem] md:left-[1.1rem]"}`}>
               <div
                 className="leaderboard-rank-bob relative flex h-9 w-9 items-center justify-center rounded-full border shadow-[0_12px_28px_-18px_rgba(0,0,0,0.35)] transition-transform duration-300 group-hover:scale-105 md:h-10 md:w-10"
