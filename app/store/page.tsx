@@ -262,7 +262,7 @@ export default function StorePage() {
                     {categoryProducts.length === 0 ? (
                       <div className="text-center text-gray-300 py-8 text-sm">لا توجد منتجات في هذه الفئة</div>
                     ) : (
-                      <div className="store-products-grid grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 lg:gap-6">
+                      <div className="store-products-grid grid grid-cols-1 gap-3 min-[430px]:grid-cols-2 sm:gap-4 xl:grid-cols-3 xl:gap-6">
                         {categoryProducts.map((prod) => (
                           <div
                             key={prod.id}
@@ -278,7 +278,7 @@ export default function StorePage() {
                               const tc = THEME_COLORS[prod.theme_key] || { primary: '#b89858', secondary: '#d4af6a', tertiary: '#8f6b3b' }
                               const isPremium = ["dawn", "galaxy", "sunset_gold", "ocean_deep"].includes(prod.theme_key)
                               return (
-                                <div className="p-2.5 sm:p-4 md:p-5">
+                                <div className="p-2 sm:p-4 md:p-5">
                                   <ThemeRankPreview primary={tc.primary} secondary={tc.secondary} tertiary={tc.tertiary} premium={isPremium} />
                                 </div>
                               )
@@ -297,7 +297,7 @@ export default function StorePage() {
                             <div className="mx-2.5 h-px bg-[#e7eef9] sm:mx-3" />
 
                             {/* Info */}
-                            <div className={`flex flex-1 flex-col ${prod.theme_key ? "gap-2 p-2.5 sm:gap-2.5 sm:p-4" : "gap-2.5 p-3 sm:p-4"} md:gap-3 md:p-5`}>
+                            <div className={`flex flex-1 flex-col ${prod.theme_key ? "gap-2 p-2 sm:gap-2.5 sm:p-4" : "gap-2.5 p-3 sm:p-4"} md:gap-3 md:p-5`}>
                               {/* Name */}
                               {!prod.theme_key && (
                                 <p className="h-10 text-sm font-semibold leading-snug text-[#1a2332] line-clamp-2 sm:h-12 sm:text-base md:h-14 md:text-lg">
@@ -308,7 +308,7 @@ export default function StorePage() {
                               {/* Buy button */}
                               {prod.theme_key && ownedThemes.includes(prod.theme_key) ? (
                                 <div
-                                  className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl py-2 text-sm font-bold select-none sm:py-3 sm:text-base md:text-lg"
+                                  className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-bold text-center select-none sm:py-3 sm:text-base md:text-lg"
                                   style={{ background: '#f3f4f6', color: '#6b7280', border: '1px solid #e5e7eb' }}
                                 >
                                   <span>✓</span>
@@ -316,10 +316,10 @@ export default function StorePage() {
                                 </div>
                               ) : (
                               <div className={`mt-1 ${prod.theme_key ? "space-y-2" : "space-y-3"}`}>
-                                <div className="flex items-center justify-center rounded-[20px] border border-[#dce6f6] bg-[linear-gradient(180deg,#ffffff_0%,#fbfdff_100%)] px-3 py-2.5 shadow-[0_8px_20px_rgba(15,23,42,0.04)] sm:px-4 sm:py-4">
+                                <div className="flex items-center justify-center rounded-[20px] border border-[#dce6f6] bg-[linear-gradient(180deg,#ffffff_0%,#fbfdff_100%)] px-2.5 py-2 shadow-[0_8px_20px_rgba(15,23,42,0.04)] sm:px-4 sm:py-4">
                                   <div className="flex items-center justify-center gap-2">
                                     <StarCoinIcon size={24} className="h-5 w-5 shrink-0 sm:h-6 sm:w-6 md:h-7 md:w-7" />
-                                    <span className="text-[1.45rem] font-black leading-none tracking-[-0.035em] text-[#20335f] [font-variant-numeric:tabular-nums] sm:text-[1.8rem] md:text-[2.55rem]">
+                                    <span className="text-[1.3rem] font-black leading-none tracking-[-0.03em] text-[#20335f] [font-variant-numeric:tabular-nums] sm:text-[1.8rem] md:text-[2.55rem]">
                                       {prod.price}
                                     </span>
                                   </div>
