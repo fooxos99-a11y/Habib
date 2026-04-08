@@ -11,7 +11,7 @@ export function ThemeRankPreview({
   secondary,
   tertiary,
   premium = false,
-  circleAlign = "start",
+  circleAlign = "end",
 }: ThemeRankPreviewProps) {
   return (
     <div
