@@ -38,79 +38,27 @@ export function ThemeRankPreview({
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute -right-8 top-5 h-28 w-28 rounded-full blur-3xl" style={{ backgroundColor: `${primary}22` }} />
         <div className="absolute -left-10 bottom-0 h-24 w-24 rounded-full blur-3xl" style={{ backgroundColor: `${secondary}18` }} />
+        <div
+          className="absolute inset-3 rounded-[18px] sm:inset-4 sm:rounded-[22px]"
+          style={{
+            background: premium
+              ? `linear-gradient(135deg, ${primary}08, rgba(255,255,255,0.6), ${secondary}10)`
+              : `linear-gradient(135deg, rgba(255,255,255,0.55), ${primary}06, ${secondary}08)`,
+            border: `1px solid ${primary}18`,
+          }}
+        />
       </div>
 
-      <div className="relative z-10 flex items-center gap-3 p-3 sm:gap-4 sm:p-4 md:grid md:grid-cols-[84px_minmax(0,1fr)_132px] md:items-center md:gap-5 md:p-6">
-        <div className={`flex shrink-0 items-center ${circleAlign === "end" ? "justify-end md:order-3" : "justify-center md:justify-start"}`}>
-          <div className="leaderboard-rank-bob mt-4 md:mt-5">
-            <div
-              className="relative flex h-11 w-11 items-center justify-center rounded-full border shadow-[0_12px_28px_-18px_rgba(0,0,0,0.35)] transition-transform duration-300 group-hover:scale-105 md:h-16 md:w-16"
-              style={{
-                background: `radial-gradient(circle at 30% 30%, ${secondary}, ${primary})`,
-                borderColor: `${tertiary}66`,
-              }}
-            >
-              <div className="absolute inset-[4px] rounded-full border border-white/25" />
-              <div className="absolute h-2 w-2 rounded-full bg-white/30 top-2.5 right-2.5" />
-              <div className="text-center" style={{ color: "#ffffff" }}>
-                <div className="text-lg font-black leading-none md:text-2xl">1</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className={`min-w-0 flex-1 ${circleAlign === "end" ? "text-left md:order-1" : "text-right"}`}>
-          <div className={`flex items-center gap-2 md:gap-3 ${circleAlign === "end" ? "justify-end" : "justify-start"}`}>
-            <div
-              className="h-4 rounded-full md:h-7"
-              style={{
-                width: "clamp(6.5rem, 46%, 11rem)",
-                background: `linear-gradient(to right, ${tertiary}, ${primary})`,
-                opacity: 0.95,
-              }}
-            />
-            <div
-              className="h-5 w-5 rounded-full border md:h-7 md:w-7"
-              style={{
-                background: `radial-gradient(circle at 30% 30%, ${secondary}, ${primary})`,
-                borderColor: `${tertiary}55`,
-              }}
-            />
-          </div>
-
-          <div className={`mt-1.5 flex flex-wrap gap-1 md:mt-3 md:gap-2 ${circleAlign === "end" ? "justify-end" : "justify-start"}`}>
-            <div
-              className="h-5 rounded-full border md:h-7"
-              style={{
-                width: "3.25rem",
-                borderColor: `${primary}22`,
-                backgroundColor: "rgba(255,255,255,0.72)",
-              }}
-            />
-            <div
-              className="h-5 rounded-full border md:h-7"
-              style={{
-                width: "4.5rem",
-                borderColor: `${secondary}22`,
-                backgroundColor: premium ? `${primary}12` : `${secondary}10`,
-              }}
-            />
-          </div>
-        </div>
-
+      <div className="relative z-10 flex h-[132px] items-center justify-center p-3 sm:h-[160px] sm:p-4 md:h-[188px] md:p-6">
         <div
-          className={`flex shrink-0 ${circleAlign === "end" ? "justify-start md:order-2" : "justify-end"}`}
+          className={`leaderboard-rank-bob relative flex h-12 w-12 items-center justify-center rounded-full border shadow-[0_12px_28px_-18px_rgba(0,0,0,0.35)] transition-transform duration-300 group-hover:scale-105 md:h-16 md:w-16 ${circleAlign === "end" ? "mr-auto" : "ml-auto"}`}
+          style={{
+            background: `radial-gradient(circle at 30% 30%, ${secondary}, ${primary})`,
+            borderColor: `${tertiary}66`,
+          }}
         >
-          <div
-            className="min-w-[76px] rounded-[18px] border bg-white/90 px-3 py-2 text-center shadow-[0_18px_40px_-24px_rgba(0,0,0,0.35)] backdrop-blur sm:min-w-[88px] sm:px-3.5 sm:py-2.5 md:min-w-[104px] md:rounded-[22px] md:px-4 md:py-3"
-            style={{ borderColor: `${primary}88` }}
-          >
-            <div
-              className="text-lg font-black leading-none text-[#20335f] sm:text-xl md:text-3xl"
-            >
-              1000
-            </div>
-          </div>
+          <div className="absolute inset-[4px] rounded-full border border-white/25" />
+          <div className="absolute h-2 w-2 rounded-full bg-white/30 top-2.5 right-2.5" />
         </div>
       </div>
     </div>
