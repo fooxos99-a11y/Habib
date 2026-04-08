@@ -1641,10 +1641,6 @@ export default function StudentPlansPage() {
                     const plan = studentPlans[student.id];
                     const progress = studentProgress[student.id] || 0;
                     const hasStoredMemorized = getStudentMemorizedDeletionItems(student).length > 0;
-                    const hasStoredMemorized = Boolean(
-                      (student.completed_juzs?.length || 0) > 0 ||
-                      (student.memorized_start_surah && student.memorized_end_surah),
-                    );
                     return (
                       <div
                         key={student.id}
