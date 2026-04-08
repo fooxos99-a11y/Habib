@@ -33,3 +33,45 @@ export function getPendingSessionIndices(totalSessions: number, completedDays: n
 
   return Array.from({ length: safeTotalSessions - safeCompletedDays }, (_, index) => safeCompletedDays + index + 1)
 }
+
+export function getScheduledSessionProgress<T extends PlanProgressRecord>(records: T[], scheduledDates: string[]) {
+  const normalizedScheduledDates = scheduledDates
+    .map((date) => String(date || "").trim())
+    .filter(Boolean)
+  const scheduledDateSet = new Set(normalizedScheduledDates)
+  const recordByDate = new Map<string, T>()
+
+  for (const record of sortPlanProgressRecords(records)) {
+    const recordDate = String(record.date || "").trim()
+    if (!recordDate || !scheduledDateSet.has(recordDate)) {
+      continue
+    }
+
+    recordByDate.set(recordDate, record)
+  }
+
+  const completedSessionIndices: number[] = []
+  const completedRecords: T[] = []
+
+  normalizedScheduledDates.forEach((scheduledDate, index) => {
+    const record = recordByDate.get(scheduledDate)
+    if (!record) {
+      return
+    }
+
+    completedSessionIndices.push(index + 1)
+    completedRecords.push(record)
+  })
+
+  const completedSessionSet = new Set(completedSessionIndices)
+  const pendingSessionIndices = normalizedScheduledDates
+    .map((_, index) => index + 1)
+    .filter((sessionIndex) => !completedSessionSet.has(sessionIndex))
+
+  return {
+    completedDays: completedSessionIndices.length,
+    completedSessionIndices,
+    completedRecords,
+    pendingSessionIndices,
+  }
+}

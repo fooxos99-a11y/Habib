@@ -7,7 +7,8 @@ import { ArrowRight, ChevronLeft, ChevronRight, Users } from "lucide-react";
 import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
 import { SiteLoader } from "@/components/ui/site-loader";
-import { getOrCreateActiveSemester, isMissingSemestersTable } from "@/lib/semesters";
+import { getPlanForDate, groupPlansByStudent } from "@/lib/plan-history";
+import { getOrCreateActiveSemester, isMissingSemestersTable, isNoActiveSemesterError } from "@/lib/semesters";
 import { getStudyWeekStart, isStudyDay } from "@/lib/study-calendar";
 import { createClient } from "@/lib/supabase/client";
 import { calculatePreviousMemorizedPages, resolvePlanReviewPagesPreference, resolvePlanReviewPoolPages } from "@/lib/quran-data";
@@ -23,7 +24,10 @@ type StudentRow = {
 };
 
 type PlanRow = {
+  id: string;
   student_id: string;
+  start_date: string | null;
+  created_at: string | null;
   daily_pages: number | null;
   muraajaa_pages: number | null;
   rabt_pages: number | null;
@@ -368,6 +372,13 @@ export function CircleWeeklyReports({ circleName, backHref, backLabel }: CircleW
           const activeSemester = await getOrCreateActiveSemester(supabase);
           activeSemesterId = activeSemester.id;
         } catch (semesterError) {
+          if (isNoActiveSemesterError(semesterError)) {
+            setError("لا يوجد فصل نشط حاليًا. ابدأ فصلًا جديدًا لعرض التقرير الأسبوعي.");
+            setHasPreviousWeek(false);
+            setStudents([]);
+            setLoading(false);
+            return;
+          }
           if (!isMissingSemestersTable(semesterError)) {
             throw semesterError;
           }
@@ -394,7 +405,7 @@ export function CircleWeeklyReports({ circleName, backHref, backLabel }: CircleW
 
         let plansQuery = supabase
           .from("student_plans")
-          .select("student_id, daily_pages, muraajaa_pages, rabt_pages")
+          .select("id, student_id, start_date, created_at, daily_pages, muraajaa_pages, rabt_pages, review_distribution_mode, has_previous, prev_start_surah, prev_start_verse, prev_end_surah, prev_end_verse, completed_juzs")
           .in("student_id", studentIds);
 
         let attendanceRangeQuery = supabase
@@ -476,7 +487,7 @@ export function CircleWeeklyReports({ circleName, backHref, backLabel }: CircleW
           previousWeekReportsCount = previousWeekReportsResult.count ?? 0;
         }
 
-        const plansByStudent = new Map(plans.map((plan) => [plan.student_id, plan]));
+        const plansByStudent = groupPlansByStudent(plans);
         const attendanceByStudent = new Map<string, Map<string, AttendanceRow>>();
         const dailyReportsByStudent = new Map<string, Map<string, DailyReportRow>>();
 
@@ -494,7 +505,7 @@ export function CircleWeeklyReports({ circleName, backHref, backLabel }: CircleW
 
         const cardRows = studentRows
           .map((student) => {
-            const plan = plansByStudent.get(student.id);
+            const studentPlans = plansByStudent.get(student.id) || [];
             const byDate = attendanceByStudent.get(student.id) ?? new Map<string, AttendanceRow>();
             const reportsByDate = dailyReportsByStudent.get(student.id) ?? new Map<string, DailyReportRow>();
             let memorized = 0;
@@ -506,13 +517,20 @@ export function CircleWeeklyReports({ circleName, backHref, backLabel }: CircleW
             let reviewCompletedCount = 0;
             let linkingCompletedCount = 0;
             let tikrarCompletedCount = 0;
-            let memorizedPoolPages = plan ? calculatePreviousMemorizedPages(plan) : 0;
+            let memorizedPoolPages = 0;
+            let activePlanId: string | null = null;
 
             const statuses = studyDates.map((date) => {
+              const plan = getPlanForDate(studentPlans, date);
               const record = byDate.get(date);
               const dailyReport = reportsByDate.get(date);
               const status = getDayStatus(record, dailyReport);
               const { memorizationDone, reviewDone, linkingDone } = getDailyCompletionFlags(record, dailyReport);
+
+              if (plan?.id && plan.id !== activePlanId) {
+                memorizedPoolPages = Math.max(memorizedPoolPages, calculatePreviousMemorizedPages(plan));
+                activePlanId = plan.id;
+              }
 
               if (record?.status === "present" || record?.status === "late") {
                 presentCount += 1;

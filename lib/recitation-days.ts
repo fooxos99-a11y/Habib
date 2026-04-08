@@ -5,14 +5,14 @@ import {
   getJuzBounds,
   getJuzNumbersForPageRange,
   getNormalizedCompletedJuzs,
-  getPlanMemorizedRanges,
+  getPlanTraversalRanges,
   getStoredMemorizedRanges,
   SURAHS,
   getPageForAyah,
   type PreviousMemorizationRange,
 } from "@/lib/quran-data"
-import { getCompletedMemorizationDays } from "@/lib/plan-progress"
-import { getOrCreateActiveSemester, isMissingSemestersTable } from "@/lib/semesters"
+import { getScheduledSessionProgress } from "@/lib/plan-progress"
+import { getOrCreateActiveSemester, isMissingSemestersTable, isNoActiveSemesterError } from "@/lib/semesters"
 
 const ADVANCING_MEMORIZATION_LEVELS = ["excellent", "good", "very_good"]
 
@@ -565,7 +565,7 @@ function buildStudentPortions(student: StudentSnapshotSource, planProgress: Stud
 
   const storedRanges = getStoredMemorizedRanges(student)
   const planRanges = planProgress?.plan
-    ? getPlanMemorizedRanges(planProgress.plan, planProgress.completedDays)
+    ? getPlanTraversalRanges(planProgress.plan)
     : []
 
   for (const range of [...storedRanges, ...planRanges]) {
@@ -780,18 +780,6 @@ export async function getStudentActivePlanProgress(
     throw planError
   }
 
-  if (!plan && semesterId) {
-    const fallback = await supabase
-      .from("student_plans")
-      .select("direction, total_pages, total_days, daily_pages, has_previous, prev_start_surah, prev_start_verse, prev_end_surah, prev_end_verse, previous_memorization_ranges, start_surah_number, start_verse, end_surah_number, end_verse, start_date")
-      .eq("student_id", studentId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    plan = fallback.data
-    planError = fallback.error
-  }
-
   if (planError) {
     throw planError
   }
@@ -832,7 +820,7 @@ export async function getStudentActivePlanProgress(
     : []
 
   const passingRecords = (attendanceRecords || []).filter(hasCompletedMemorization)
-  const completedDays = getCompletedMemorizationDays(passingRecords, scheduledDates.length)
+  const completedDays = getScheduledSessionProgress(passingRecords, scheduledDates).completedDays
 
   return { plan, completedDays }
 }
@@ -850,7 +838,7 @@ export async function buildRecitationDayStudentsSnapshot(
     const activeSemester = await getOrCreateActiveSemester(supabase)
     activeSemesterId = activeSemester.id
   } catch (error) {
-    if (!isMissingSemestersTable(error)) {
+    if (!isMissingSemestersTable(error) && !isNoActiveSemesterError(error)) {
       throw error
     }
   }
@@ -893,7 +881,9 @@ export async function buildRecitationDayStudentsSnapshot(
   const snapshots: RecitationStudentSnapshot[] = []
 
   for (const student of students || []) {
-    const planProgress = await getStudentActivePlanProgress(supabase, student.id, activeSemesterId)
+    const planProgress = activeSemesterId
+      ? await getStudentActivePlanProgress(supabase, student.id, activeSemesterId)
+      : null
     const portions = buildStudentPortions(student, planProgress)
 
     snapshots.push({

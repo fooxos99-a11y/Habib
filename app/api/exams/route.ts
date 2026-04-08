@@ -5,11 +5,11 @@ import { calculateExamScore, getExamSettings } from "@/lib/exam-settings"
 import { getExamPortionSettings, normalizeExamPortionSettings } from "@/lib/exam-portion-settings"
 import { getExamPortionLabel, getJuzNumberForPortion, isValidExamPortionNumber, normalizeExamPortionType } from "@/lib/exam-portions"
 import { formatExamPortionLabel, getEligibleExamPortions } from "@/lib/student-exams"
-import { getCompletedMemorizationDays } from "@/lib/plan-progress"
+import { getScheduledSessionProgress } from "@/lib/plan-progress"
 import { insertNotificationsAndSendPush } from "@/lib/push-notifications"
 import { getSaudiDateString } from "@/lib/saudi-time"
 import { getContiguousCompletedJuzRange, getNormalizedCompletedJuzs, getPendingMasteryJuzs, hasScatteredCompletedJuzs } from "@/lib/quran-data"
-import { getOrCreateActiveSemester, isMissingSemestersTable } from "@/lib/semesters"
+import { getOrCreateActiveSemester, isMissingSemestersTable, isNoActiveSemesterError } from "@/lib/semesters"
 import { buildExamAppNotificationMessage, enqueueWhatsAppMessage, fillExamWhatsAppTemplate, getExamWhatsAppTemplates } from "@/lib/whatsapp-notification-templates"
 
 const ADVANCING_MEMORIZATION_LEVELS = ["excellent", "good", "very_good"]
@@ -96,11 +96,12 @@ function getScheduledStudyDates(startDate: string, maxSessions: number, endDate 
 	return scheduledDates
 }
 
-async function getStudentActivePlanProgress(supabase: Awaited<ReturnType<typeof createClient>>, studentId: string) {
+async function getStudentActivePlanProgress(supabase: Awaited<ReturnType<typeof createClient>>, studentId: string, semesterId: string) {
 	const { data: plan, error: planError } = await supabase
 		.from("student_plans")
 		.select("direction, total_pages, total_days, daily_pages, has_previous, prev_start_surah, prev_start_verse, prev_end_surah, prev_end_verse, previous_memorization_ranges, start_surah_number, start_verse, end_surah_number, end_verse, start_date")
 		.eq("student_id", studentId)
+		.eq("semester_id", semesterId)
 		.order("created_at", { ascending: false })
 		.limit(1)
 		.maybeSingle()
@@ -117,6 +118,7 @@ async function getStudentActivePlanProgress(supabase: Awaited<ReturnType<typeof 
 		.from("attendance_records")
 		.select("id, date, status, is_compensation, created_at, evaluations(hafiz_level)")
 		.eq("student_id", studentId)
+		.eq("semester_id", semesterId)
 		.order("date", { ascending: true })
 
 	if (plan.start_date) {
@@ -138,7 +140,7 @@ async function getStudentActivePlanProgress(supabase: Awaited<ReturnType<typeof 
 		)
 		: []
 	const passingRecords = (attendanceRecords || []).filter(hasCompletedMemorization)
-	const completedDays = getCompletedMemorizationDays(passingRecords, scheduledDates.length)
+	const completedDays = getScheduledSessionProgress(passingRecords, scheduledDates).completedDays
 
 	return { plan, completedDays }
 }
@@ -312,6 +314,9 @@ export async function GET(request: Request) {
 		return NextResponse.json({ exams: data || [], tableMissing: false, portionSettings })
 	} catch (error) {
 		console.error("[exams][GET]", error)
+		if (isNoActiveSemesterError(error)) {
+			return NextResponse.json({ exams: [], tableMissing: false, error: "لا يوجد فصل نشط حاليًا." }, { status: 409 })
+		}
 		if (isMissingSemestersTable(error)) {
 			return NextResponse.json({ error: "جدول الفصول غير موجود بعد. نفذ ملف scripts/046_create_semesters.sql ثم أعد المحاولة." }, { status: 503 })
 		}
@@ -375,7 +380,7 @@ export async function POST(request: Request) {
 			return NextResponse.json({ error: "اسم المختبر مطلوب" }, { status: 400 })
 		}
 
-		const activePlanProgress = await getStudentActivePlanProgress(supabase, student.id)
+		const activePlanProgress = await getStudentActivePlanProgress(supabase, student.id, activeSemester.id)
 		const eligiblePortions = getEligibleExamPortions(student, activePlanProgress, portionType)
 		if (!isValidExamPortionNumber(portionType, portionNumber)) {
 			return NextResponse.json({ error: portionType === "hizb" ? "رقم الحزب غير صالح" : "رقم الجزء غير صالح" }, { status: 400 })
@@ -656,6 +661,9 @@ export async function POST(request: Request) {
 		return NextResponse.json({ success: true, exam: data, score, requiresRememorization, scheduledRetest, retestDate: scheduledRetest ? formatExamDate(retestDate) : null, resetWarning, notificationWarning }, { status: 201 })
 	} catch (error) {
 		console.error("[exams][POST]", error)
+		if (isNoActiveSemesterError(error)) {
+			return NextResponse.json({ error: "لا يوجد فصل نشط حاليًا. ابدأ فصلًا جديدًا قبل تسجيل الاختبارات." }, { status: 409 })
+		}
 		if (isMissingSemestersTable(error)) {
 			return NextResponse.json({ error: "جدول الفصول غير موجود بعد. نفذ ملف scripts/046_create_semesters.sql ثم أعد المحاولة." }, { status: 503 })
 		}

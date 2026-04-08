@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { requireRoles } from "@/lib/auth/guards"
+import { getScheduledSessionProgress } from "@/lib/plan-progress"
 import { buildSemesterArchiveData } from "@/lib/semester-archive"
 import { SURAHS, getLegacyPreviousMemorizationFields, getPlanMemorizedRanges, normalizePreviousMemorizationRanges } from "@/lib/quran-data"
-import { DEFAULT_ACTIVE_SEMESTER_NAME, getOrCreateActiveSemester, isMissingSemestersTable } from "@/lib/semesters"
+import { getOrCreateActiveSemester, isMissingSemestersTable, isNoActiveSemesterError } from "@/lib/semesters"
 import { getSaudiDateString } from "@/lib/saudi-time"
 
 const ADVANCING_MEMORIZATION_LEVELS = ["excellent", "good", "very_good"]
@@ -28,25 +29,44 @@ function hasCompletedMemorization(record: any) {
   return ADVANCING_MEMORIZATION_LEVELS.includes(latestEvaluation?.hafiz_level ?? "")
 }
 
-async function getCompletedDaysForPlan(supabase: any, studentId: string, semesterId: string, startDate?: string | null) {
-  let query = supabase
-    .from("attendance_records")
-    .select("status, evaluations(hafiz_level)")
-    .eq("student_id", studentId)
-    .eq("semester_id", semesterId)
-    .order("date", { ascending: true })
+function isMissingArchiveActiveSemesterFunction(error: unknown) {
+  const message = String((error as { message?: string } | null)?.message || error || "")
+  return /archive_active_semester_atomic/i.test(message) && /does not exist|not exist|function|rpc/i.test(message)
+}
 
-  if (startDate) {
-    query = query.gte("date", startDate)
+function getScheduledStudyDates(startDate: string, maxSessions: number, endDate = getSaudiDateString()) {
+  const scheduledDates: string[] = []
+  const currentDate = new Date(startDate)
+  const lastDate = new Date(endDate)
+
+  while (currentDate <= lastDate && scheduledDates.length < maxSessions) {
+    const dayOfWeek = currentDate.getDay()
+    if (dayOfWeek !== 5 && dayOfWeek !== 6) {
+      scheduledDates.push(currentDate.toISOString().split("T")[0])
+    }
+    currentDate.setDate(currentDate.getDate() + 1)
   }
 
-  const { data, error } = await query
+  return scheduledDates
+}
 
-  if (error) {
-    throw error
+function getCompletedDaysForPlan(plan: any, attendanceRecords: any[] = []) {
+  if (!plan?.start_date) {
+    return 0
   }
 
-  return (data || []).filter(hasCompletedMemorization).length
+  const totalSessions = Number(plan.total_days) > 0
+    ? Number(plan.total_days)
+    : (Number(plan.total_pages) > 0 && Number(plan.daily_pages) > 0
+        ? Math.max(0, Math.ceil(Number(plan.total_pages) / Number(plan.daily_pages)))
+        : 0)
+
+  const scheduledDates = getScheduledStudyDates(plan.start_date, totalSessions)
+  const passingRecords = (attendanceRecords || [])
+    .filter((record) => !record?.date || String(record.date) >= String(plan.start_date))
+    .filter(hasCompletedMemorization)
+
+  return getScheduledSessionProgress(passingRecords, scheduledDates).completedDays
 }
 
 function getMergedMemorizedRange(student: any, plan: any) {
@@ -137,64 +157,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "يوجد فصل محفوظ بنفس الاسم بالفعل" }, { status: 400 })
     }
 
-    const { data: students, error: studentsError } = await supabase
-      .from("students")
-      .select("id, memorized_start_surah, memorized_start_verse, memorized_end_surah, memorized_end_verse, memorized_ranges")
-
-    if (studentsError) {
-      return NextResponse.json({ error: studentsError.message || "فشل في جلب الطلاب" }, { status: 500 })
-    }
-
     const { data: plans, error: plansError } = await supabase
       .from("student_plans")
-      .select("student_id, start_surah_number, start_verse, end_surah_number, end_verse, prev_start_surah, prev_start_verse, prev_end_surah, prev_end_verse, previous_memorization_ranges, total_pages, daily_pages, direction, start_date, has_previous")
+      .select("student_id, start_surah_number, start_verse, end_surah_number, end_verse, prev_start_surah, prev_start_verse, prev_end_surah, prev_end_verse, previous_memorization_ranges, total_pages, total_days, daily_pages, direction, start_date, has_previous, created_at")
       .eq("semester_id", activeSemester.id)
+      .order("created_at", { ascending: false })
 
     if (plansError) {
       return NextResponse.json({ error: plansError.message || "فشل في جلب الخطط الحالية" }, { status: 500 })
     }
 
-    const plansByStudentId = new Map((plans || []).map((plan) => [plan.student_id, plan]))
-    let archivedPlansCount = 0
-
-    for (const student of students || []) {
-      const plan = plansByStudentId.get(student.id)
-      const updateData: Record<string, number | null> = {
-        points: 0,
-        store_points: 0,
-      }
-
-      if (plan) {
-        const completedDays = await getCompletedDaysForPlan(supabase, student.id, activeSemester.id, plan.start_date)
-        Object.assign(updateData, getMergedMemorizedRange(student, { ...plan, completedDays }))
-        archivedPlansCount += 1
-      }
-
-      const { error: updateStudentError } = await supabase
-        .from("students")
-        .update(updateData)
-        .eq("id", student.id)
-
-      if (updateStudentError) {
-        const columnsMissing = /memorized_start_surah|memorized_end_surah|column/i.test(
-          `${updateStudentError.message ?? ""} ${updateStudentError.details ?? ""}`,
-        )
-
-        return NextResponse.json(
-          {
-            error: columnsMissing
-              ? "حقول محفوظ الطالب غير موجودة بعد. نفذ ملف scripts/043_add_student_memorized_fields.sql و scripts/049_add_previous_memorization_ranges.sql ثم أعد المحاولة."
-              : updateStudentError.message || "فشل في تحديث بيانات الطلاب",
-            details: updateStudentError.details ?? null,
-            hint: updateStudentError.hint ?? null,
-            code: updateStudentError.code ?? null,
-          },
-          { status: 500 },
-        )
-      }
-    }
-
     const archivedAt = new Date().toISOString()
+    const archivedEndDate = getSaudiDateString()
 
     const [attendanceResult, invoicesResult, expensesResult, incomesResult, tripsResult] = await Promise.all([
       supabase
@@ -236,21 +210,64 @@ export async function POST(request: Request) {
       ),
     )
 
+    const { data: students, error: studentsError } = semesterStudentIds.length > 0
+      ? await supabase
+          .from("students")
+          .select("id, name, account_number, halaqah, memorized_start_surah, memorized_start_verse, memorized_end_surah, memorized_end_verse, memorized_ranges")
+          .in("id", semesterStudentIds)
+      : { data: [], error: null }
+
+    if (studentsError) {
+      return NextResponse.json({ error: studentsError.message || "فشل في جلب الطلاب" }, { status: 500 })
+    }
+
+    const latestPlanByStudentId = new Map<string, any>()
+    for (const plan of plans || []) {
+      const studentId = String(plan.student_id || "")
+      if (!studentId || latestPlanByStudentId.has(studentId)) {
+        continue
+      }
+
+      latestPlanByStudentId.set(studentId, plan)
+    }
+
+    const attendanceByStudentId = new Map<string, any[]>()
+    for (const attendanceRecord of attendanceResult.data || []) {
+      const studentId = String(attendanceRecord.student_id || "")
+      if (!studentId) {
+        continue
+      }
+
+      const existing = attendanceByStudentId.get(studentId)
+      if (existing) {
+        existing.push(attendanceRecord)
+      } else {
+        attendanceByStudentId.set(studentId, [attendanceRecord])
+      }
+    }
+
+    const studentUpdates = (students || []).map((student) => {
+      const plan = latestPlanByStudentId.get(String(student.id))
+      const updateData: Record<string, unknown> = {
+        id: student.id,
+        points: 0,
+        store_points: 0,
+      }
+
+      if (plan) {
+        const completedDays = getCompletedDaysForPlan(plan, attendanceByStudentId.get(String(student.id)) || [])
+        Object.assign(updateData, getMergedMemorizedRange(student, { ...plan, completedDays }))
+      }
+
+      return updateData
+    })
+
+    const archivedPlansCount = Array.from(latestPlanByStudentId.keys()).length
+
     const studentMap = new Map<string, { id: string; name?: string | null; account_number?: number | null; halaqah?: string | null }>()
 
-    if (semesterStudentIds.length > 0) {
-      const { data: semesterStudents, error: semesterStudentsError } = await supabase
-        .from("students")
-        .select("id, name, account_number, halaqah")
-        .in("id", semesterStudentIds)
-
-      if (semesterStudentsError) {
-        throw semesterStudentsError
-      }
-
-      for (const student of semesterStudents || []) {
-        studentMap.set(String(student.id), student)
-      }
+    for (const student of students || []) {
+      studentMap.set(String(student.id), student)
     }
 
     const archiveBundle = buildSemesterArchiveData({
@@ -264,60 +281,50 @@ export async function POST(request: Request) {
       generatedAt: archivedAt,
     })
 
-    const { error: archiveSemesterError } = await supabase
-      .from("semesters")
-      .update({
-        name: semesterName,
-        status: "archived",
-        end_date: getSaudiDateString(),
-        archived_at: archivedAt,
-        archive_snapshot: archiveBundle.snapshot,
-        updated_at: archivedAt,
-      })
-      .eq("id", activeSemester.id)
+    const { error: archiveError } = await supabase.rpc("archive_active_semester_atomic", {
+      p_active_semester_id: activeSemester.id,
+      p_archived_semester_name: semesterName,
+      p_archived_at: archivedAt,
+      p_archived_end_date: archivedEndDate,
+      p_archive_snapshot: archiveBundle.snapshot,
+      p_student_updates: studentUpdates,
+    })
 
-    if (archiveSemesterError) {
-      throw archiveSemesterError
-    }
+    if (archiveError) {
+      if (isMissingArchiveActiveSemesterFunction(archiveError)) {
+        return NextResponse.json({ error: "دالة إنهاء الفصل الذرية غير موجودة بعد. نفذ ملف scripts/055_create_archive_active_semester_atomic.sql ثم أعد المحاولة." }, { status: 503 })
+      }
 
-    const { error: cancelSchedulesError } = await supabase
-      .from("exam_schedules")
-      .update({
-        status: "cancelled",
-        cancelled_at: archivedAt,
-        updated_at: archivedAt,
-      })
-      .eq("semester_id", activeSemester.id)
-      .eq("status", "scheduled")
+      const columnsMissing = /memorized_start_surah|memorized_end_surah|column/i.test(
+        `${archiveError.message ?? ""} ${archiveError.details ?? ""}`,
+      )
 
-    if (cancelSchedulesError) {
-      throw cancelSchedulesError
-    }
-
-    const { data: newSemester, error: newSemesterError } = await supabase
-      .from("semesters")
-      .insert({
-        name: DEFAULT_ACTIVE_SEMESTER_NAME,
-        status: "active",
-        start_date: getSaudiDateString(),
-      })
-      .select("id, name")
-      .single()
-
-    if (newSemesterError) {
-      throw newSemesterError
+      return NextResponse.json(
+        {
+          error: columnsMissing
+            ? "حقول محفوظ الطالب غير موجودة بعد. نفذ ملف scripts/043_add_student_memorized_fields.sql و scripts/049_add_previous_memorization_ranges.sql ثم أعد المحاولة."
+            : archiveError.message || "فشل في إنهاء الفصل",
+          details: archiveError.details ?? null,
+          hint: archiveError.hint ?? null,
+          code: archiveError.code ?? null,
+        },
+        { status: 500 },
+      )
     }
 
     return NextResponse.json({
       success: true,
       archivedSemesterName: semesterName,
-      newSemester,
-      studentsReset: (students || []).length,
+      newSemester: null,
+      studentsReset: studentUpdates.length,
       plansArchived: archivedPlansCount,
       accountsPreserved: true,
     })
   } catch (error) {
     console.error("[end-semester] POST error:", error)
+    if (isNoActiveSemesterError(error)) {
+      return NextResponse.json({ error: "لا يوجد فصل نشط لإنهائه. ابدأ فصلًا جديدًا أولاً." }, { status: 409 })
+    }
     if (isMissingSemestersTable(error)) {
       return NextResponse.json({ error: "جدول الفصول غير موجود بعد. نفذ ملف scripts/046_create_semesters.sql ثم أعد المحاولة." }, { status: 503 })
     }

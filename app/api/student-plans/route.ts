@@ -19,11 +19,11 @@ import {
   resolvePlanTotalDays,
   resolvePlanTotalPages,
 } from "@/lib/quran-data"
-import { getCompletedMemorizationDays, getCompletedMemorizationRecords } from "@/lib/plan-progress"
+import { getScheduledSessionProgress } from "@/lib/plan-progress"
 import { getSaudiDateString } from "@/lib/saudi-time"
 import { buildWeeklyReviewPlan, type ReviewMode } from "@/lib/weekly-review"
 import { isEvaluatedAttendance } from "@/lib/student-attendance"
-import { getOrCreateActiveSemester, isMissingSemestersTable } from "@/lib/semesters"
+import { getOrCreateActiveSemester, isMissingSemestersTable, isNoActiveSemesterError } from "@/lib/semesters"
 import { normalizeHafizExtraPages } from "@/lib/hafiz-extra"
 
 export const dynamic = "force-dynamic"
@@ -495,8 +495,9 @@ function buildStudentPlanSummary(
     : []
 
   const passingRecords = filteredAttendanceRecords.filter(hasCompletedMemorization)
-  const completedDays = getCompletedMemorizationDays(passingRecords, scheduledDates.length)
-  const completedRecords = getCompletedMemorizationRecords(passingRecords, scheduledDates.length).slice(0, completedDays)
+  const sessionProgress = getScheduledSessionProgress(passingRecords, scheduledDates)
+  const completedDays = sessionProgress.completedDays
+  const completedRecords = sessionProgress.completedRecords
   const reviewCompletedDays = filteredAttendanceRecords.filter(hasCompletedReview).length
   const hafizExtraPages = Math.min(
     Number(plan.total_pages) || 0,
@@ -750,6 +751,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "معرف الطالب مطلوب" }, { status: 400 })
   } catch (error) {
     console.error("[plans] GET error:", error)
+    if (isNoActiveSemesterError(error)) {
+      return NextResponse.json({ error: "لا يوجد فصل نشط حاليًا." }, { status: 409 })
+    }
     if (isMissingSemestersTable(error)) {
       return NextResponse.json({ error: "جدول الفصول غير موجود بعد. نفذ ملف scripts/046_create_semesters.sql ثم أعد المحاولة." }, { status: 503 })
     }
@@ -1014,7 +1018,7 @@ export async function POST(request: Request) {
 
     const { data: existingPlans, error: existingPlansError } = await supabase
       .from("student_plans")
-      .select("id, start_date")
+      .select("id, start_date, start_surah_number, start_verse, end_surah_number, end_verse, daily_pages, direction")
       .eq("student_id", student_id)
       .eq("semester_id", activeSemester.id)
       .order("created_at", { ascending: false })
@@ -1027,7 +1031,25 @@ export async function POST(request: Request) {
       ? (weeklyReviewPlan?.dailyTargetPages && weeklyReviewPlan.dailyTargetPages > 0 ? weeklyReviewPlan.dailyTargetPages : null)
       : muraajaa_pages || null
 
-    const preservedStartDate = existingPlans?.[0]?.start_date || null
+    const latestExistingPlan = existingPlans?.[0] || null
+    const requestedStartDate = typeof start_date === "string" && start_date.trim().length > 0
+      ? start_date.trim()
+      : null
+    const normalizedSubmittedEndVerse = Number(end_verse) || endSurahData.verseCount
+    const hasSignificantPlanChange = Boolean(
+      latestExistingPlan && (
+        Number(latestExistingPlan.start_surah_number) !== adjustedStartSurahNumber
+        || (Number(latestExistingPlan.start_verse) || 1) !== adjustedStartVerse
+        || Number(latestExistingPlan.end_surah_number) !== Number(end_surah_number)
+        || (Number(latestExistingPlan.end_verse) || endSurahData.verseCount) !== normalizedSubmittedEndVerse
+        || Number(latestExistingPlan.daily_pages) !== Number(daily_pages)
+        || String(latestExistingPlan.direction || "asc") !== normalizedDirection
+        || Boolean(requestedStartDate && requestedStartDate !== latestExistingPlan.start_date)
+      )
+    )
+    const effectiveStartDate = hasSignificantPlanChange
+      ? (requestedStartDate || getSaudiDateString())
+      : (requestedStartDate || latestExistingPlan?.start_date || getSaudiDateString())
 
     const planPayload = {
       student_id,
@@ -1041,7 +1063,7 @@ export async function POST(request: Request) {
       daily_pages,
       total_pages: persistedTotalPages,
       total_days: totalDays,
-      start_date: start_date || preservedStartDate || getSaudiDateString(),
+      start_date: effectiveStartDate,
       direction: normalizedDirection,
       has_previous: effectiveHasPrevious,
       prev_start_surah: effectivePrevStartSurah,
@@ -1058,7 +1080,7 @@ export async function POST(request: Request) {
       weekly_muraajaa_end_day: normalizedMuraajaaMode === "weekly_distributed" ? Number(weekly_muraajaa_end_day) : null,
     }
 
-    const primaryExistingPlanId = existingPlans?.[0]?.id || null
+    const primaryExistingPlanId = hasSignificantPlanChange ? null : (latestExistingPlan?.id || null)
     const query = primaryExistingPlanId
       ? supabase
           .from("student_plans")
@@ -1077,7 +1099,7 @@ export async function POST(request: Request) {
     const oldPlanIds = (existingPlans || [])
       .map((plan) => plan.id)
       .filter((planId) => Boolean(planId) && planId !== primaryExistingPlanId)
-    if (oldPlanIds.length > 0) {
+    if (!hasSignificantPlanChange && oldPlanIds.length > 0) {
       const { error: cleanupError } = await supabase
         .from("student_plans")
         .delete()
@@ -1099,6 +1121,9 @@ export async function POST(request: Request) {
     }, { status: 201 })
   } catch (error) {
     console.error("[plans] POST error:", error)
+    if (isNoActiveSemesterError(error)) {
+      return NextResponse.json({ error: "لا يوجد فصل نشط حاليًا. ابدأ فصلًا جديدًا قبل إنشاء أو تعديل الخطط." }, { status: 409 })
+    }
     if (isMissingSemestersTable(error)) {
       return NextResponse.json({ error: "جدول الفصول غير موجود بعد. نفذ ملف scripts/046_create_semesters.sql ثم أعد المحاولة." }, { status: 503 })
     }
@@ -1162,6 +1187,9 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("[plans] DELETE error:", error)
+    if (isNoActiveSemesterError(error)) {
+      return NextResponse.json({ error: "لا يوجد فصل نشط حاليًا." }, { status: 409 })
+    }
     if (isMissingSemestersTable(error)) {
       return NextResponse.json({ error: "جدول الفصول غير موجود بعد. نفذ ملف scripts/046_create_semesters.sql ثم أعد المحاولة." }, { status: 503 })
     }

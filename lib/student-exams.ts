@@ -1,4 +1,4 @@
-import { SURAHS, getHizbCoverageFromRanges, getJuzBounds, getJuzCoverageFromRanges, getNormalizedCompletedJuzs, getPendingMasteryJuzs, getPlanMemorizedRanges, getStoredMemorizedRanges, type PreviousMemorizationRange } from "@/lib/quran-data"
+import { SURAHS, getHizbCoverageFromRanges, getJuzBounds, getJuzCoverageFromRanges, getNormalizedCompletedJuzs, getPendingMasteryJuzs, getPlanTraversalRanges, getStoredMemorizedRanges, type PreviousMemorizationRange } from "@/lib/quran-data"
 import { getExamPortionLabel, getEquivalentPortionNumbers, getJuzNumberForPortion, normalizeExamPortionType } from "@/lib/exam-portions"
 import type { ExamPortionType } from "@/lib/exam-portion-settings"
 
@@ -112,13 +112,10 @@ function getCombinedMemorizedRanges(student?: StudentExamEligibilitySource | nul
 	const directCompleted = getNormalizedCompletedJuzs(student.completed_juzs)
 	const storedRanges = getStoredMemorizedRanges(student)
 	const planRanges = planProgress?.plan
-		? getPlanMemorizedRanges(
-			{
-				...planProgress.plan,
-				completed_juzs: directCompleted,
-			},
-			Number(planProgress.completedDays) || 0,
-		)
+		? getPlanTraversalRanges({
+			...planProgress.plan,
+			completed_juzs: directCompleted,
+		})
 		: []
 
 	return [...storedRanges, ...planRanges]
@@ -205,13 +202,10 @@ export function getEligibleExamHizbs(student?: StudentExamEligibilitySource | nu
 	const storedCoverage = getHizbCoverageFromRanges(storedRanges)
 	const coveredCompletedHizbs = Array.from(storedCoverage.completedHizbs)
 	const planRanges = planProgress?.plan
-		? getPlanMemorizedRanges(
-			{
-				...planProgress.plan,
-				completed_juzs: directCompletedJuzs,
-			},
-			Number(planProgress.completedDays) || 0,
-		)
+		? getPlanTraversalRanges({
+			...planProgress.plan,
+			completed_juzs: directCompletedJuzs,
+		})
 		: []
 	const planCoverage = getHizbCoverageFromRanges(planRanges)
 	const plannedCompletedHizbs = Array.from(planCoverage.completedHizbs)
@@ -237,13 +231,10 @@ export function getEligibleExamJuzs(student?: StudentExamEligibilitySource | nul
 	const rangeCoverage = getJuzCoverageFromRanges(storedRanges)
 	const coveredCompleted = Array.from(rangeCoverage.completedJuzs)
 	const planRanges = planProgress?.plan
-		? getPlanMemorizedRanges(
-			{
-				...planProgress.plan,
-				completed_juzs: directCompleted,
-			},
-			Number(planProgress.completedDays) || 0,
-		)
+		? getPlanTraversalRanges({
+			...planProgress.plan,
+			completed_juzs: directCompleted,
+		})
 		: []
 	const planCoverage = getJuzCoverageFromRanges(planRanges)
 	const plannedCompleted = Array.from(planCoverage.completedJuzs)

@@ -330,9 +330,13 @@ export default function AdminSemestersPage() {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(true)
   const [isDeletingSemester, setIsDeletingSemester] = useState(false)
+  const [isStartingSemester, setIsStartingSemester] = useState(false)
   const [semesters, setSemesters] = useState<SemesterSummary[]>([])
+  const [activeSemester, setActiveSemester] = useState<SemesterSummary | null>(null)
   const [selectedSemesterId, setSelectedSemesterId] = useState("")
   const [selectedSemester, setSelectedSemester] = useState<SemesterSummary | null>(null)
+  const [newSemesterName, setNewSemesterName] = useState("")
+  const [newSemesterStartDate, setNewSemesterStartDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [plans, setPlans] = useState<SemesterPlanRow[]>([])
   const [dailyStudentRecords, setDailyStudentRecords] = useState<SemesterDailyStudentRecordRow[]>([])
   const [absences, setAbsences] = useState<SemesterAbsenceRow[]>([])
@@ -353,9 +357,52 @@ export default function AdminSemestersPage() {
   const refreshSemesters = async () => {
     const response = await fetch("/api/semesters", { cache: "no-store" })
     const data = await response.json()
-    const loadedSemesters = ((data.semesters || []) as SemesterSummary[]).filter((semester) => semester.status === "archived")
+    const allSemesters = (data.semesters || []) as SemesterSummary[]
+    const loadedSemesters = allSemesters.filter((semester) => semester.status === "archived")
+    setActiveSemester(allSemesters.find((semester) => semester.id === data.activeSemesterId) || null)
     setSemesters(loadedSemesters)
     return loadedSemesters
+  }
+
+  const handleStartSemester = async () => {
+    if (!newSemesterName.trim()) {
+      toast({ title: "خطأ", description: "أدخل اسم الفصل الجديد", variant: "destructive" })
+      return
+    }
+
+    if (!newSemesterStartDate) {
+      toast({ title: "خطأ", description: "حدد تاريخ بداية الفصل", variant: "destructive" })
+      return
+    }
+
+    setIsStartingSemester(true)
+    try {
+      const response = await fetch("/api/semesters", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newSemesterName.trim(),
+          start_date: newSemesterStartDate,
+        }),
+      })
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "تعذر بدء الفصل")
+      }
+
+      await refreshSemesters()
+      setNewSemesterName("")
+      toast({ title: "تم بدء الفصل", description: `تم بدء الفصل "${data.semester?.name || newSemesterName.trim()}" بنجاح` })
+    } catch (error) {
+      toast({
+        title: "خطأ",
+        description: error instanceof Error ? error.message : "تعذر بدء الفصل الجديد",
+        variant: "destructive",
+      })
+    } finally {
+      setIsStartingSemester(false)
+    }
   }
 
   useEffect(() => {
@@ -592,6 +639,49 @@ export default function AdminSemestersPage() {
       <Header />
       <main className="px-4 py-8 md:px-6 md:py-10">
         <div className="mx-auto max-w-7xl space-y-6">
+          <Card className="rounded-[30px] border-[#dbe5f1] bg-white shadow-[0_16px_45px_rgba(15,23,42,0.06)]">
+            <CardHeader className="text-right">
+              <CardTitle className="text-2xl font-black text-[#1a2332]">إدارة الفصل النشط</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {activeSemester ? (
+                <div className="rounded-[24px] border border-[#d7e7d9] bg-[#f5fbf6] px-5 py-5 text-right">
+                  <div className="text-lg font-black text-[#1a2332]">يوجد فصل نشط حاليًا: {activeSemester.name}</div>
+                  <div className="mt-2 text-sm font-semibold text-[#4b5563]">تاريخ البداية: {activeSemester.start_date}</div>
+                  <div className="mt-2 text-sm font-semibold text-[#198754]">لن يتم السماح ببدء فصل جديد حتى يتم إنهاء هذا الفصل أولًا.</div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="rounded-[24px] border border-[#f1deb0] bg-[#fffaf1] px-5 py-4 text-right text-sm font-semibold text-[#8a6a22]">
+                    لا يوجد فصل نشط حاليًا. لن يتمكن المعلمون أو المشرفون من تسجيل الحضور أو التقييم أو إنشاء الخطط حتى تبدأ فصلًا جديدًا يدويًا.
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px_auto]">
+                    <Input
+                      value={newSemesterName}
+                      onChange={(event) => setNewSemesterName(event.target.value)}
+                      placeholder="اسم الفصل الجديد"
+                      className="border-[#d8e4fb] text-base"
+                    />
+                    <Input
+                      type="date"
+                      value={newSemesterStartDate}
+                      onChange={(event) => setNewSemesterStartDate(event.target.value)}
+                      className="border-[#d8e4fb] text-base"
+                    />
+                    <Button
+                      type="button"
+                      onClick={handleStartSemester}
+                      disabled={isStartingSemester}
+                      className="bg-[#3453a7] text-white hover:bg-[#24428f]"
+                    >
+                      {isStartingSemester ? "جاري البدء..." : "بدء الفصل"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <Card className="rounded-[30px] border-[#dbe5f1] bg-white shadow-[0_16px_45px_rgba(15,23,42,0.06)]">
             <CardHeader className="text-right">
               <CardTitle className="text-2xl font-black text-[#1a2332]">أرشيف الفصول</CardTitle>

@@ -14,7 +14,7 @@ import {
   isEvaluatedAttendance,
   isNonEvaluatedAttendance,
 } from "@/lib/student-attendance"
-import { getOrCreateActiveSemester } from "@/lib/semesters"
+import { getOrCreateActiveSemester, isNoActiveSemesterError } from "@/lib/semesters"
 import { getHafizExtraPoints, normalizeHafizExtraPages } from "@/lib/hafiz-extra"
 
 function getKsaDateString() {
@@ -501,6 +501,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, results, whatsapp: whatsappSummary })
   } catch (error) {
     console.error("[batch] Error in batch attendance API:", error)
+    if (isNoActiveSemesterError(error)) {
+      return NextResponse.json({ error: "لا يوجد فصل نشط حاليًا. ابدأ فصلًا جديدًا قبل حفظ الحضور الجماعي." }, { status: 409 })
+    }
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

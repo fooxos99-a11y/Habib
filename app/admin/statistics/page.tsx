@@ -7,10 +7,11 @@ import { BookOpen, ChevronDown, Link2, Orbit, Percent, Trophy, Users, type Lucid
 import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
 import { SiteLoader } from "@/components/ui/site-loader";
-import { getOrCreateActiveSemester, isMissingSemestersTable } from "@/lib/semesters";
+import { getOrCreateActiveSemester, isMissingSemestersTable, isNoActiveSemesterError } from "@/lib/semesters";
 import { useAdminAuth } from "@/hooks/use-admin-auth";
 import { getStudyWeekEnd, getStudyWeekStart, isStudyDay } from "@/lib/study-calendar";
 import { createClient } from "@/lib/supabase/client";
+import { getPlanForDate, groupPlansByStudent } from "@/lib/plan-history";
 import {
   applyAttendancePointsAdjustment,
   calculateTotalEvaluationPoints,
@@ -48,7 +49,10 @@ type CircleRow = {
 };
 
 type PlanRow = {
+  id: string;
   student_id: string;
+  start_date: string | null;
+  created_at: string | null;
   daily_pages: number | null;
   muraajaa_pages: number | null;
   rabt_pages: number | null;
@@ -679,12 +683,24 @@ export default function StatisticsPage() {
         activeSemesterId = activeSemester.id;
         activeSemesterStartDate = activeSemester.start_date ? new Date(`${activeSemester.start_date}T00:00:00`) : null;
       } catch (semesterError) {
+        if (isNoActiveSemesterError(semesterError)) {
+          setCounts({ circles: 0, students: 0 });
+          setTotals({ memorized: 0, revised: 0, tied: 0 });
+          setTopMemorizers([]);
+          setTopRevisers([]);
+          setTopTied([]);
+          setTopCircles([]);
+          setAllCircles([]);
+          setError("لا يوجد فصل نشط حاليًا. ابدأ فصلًا جديدًا لعرض الإحصائيات الحالية.");
+          setLoading(false);
+          return;
+        }
         if (!isMissingSemestersTable(semesterError)) {
           throw semesterError;
         }
       }
 
-      let plansQuery = supabase.from("student_plans").select("student_id, daily_pages, muraajaa_pages, rabt_pages");
+      let plansQuery = supabase.from("student_plans").select("id, student_id, start_date, created_at, daily_pages, muraajaa_pages, rabt_pages");
       if (activeSemesterId) {
         plansQuery = plansQuery.eq("semester_id", activeSemesterId);
       }
@@ -735,7 +751,8 @@ export default function StatisticsPage() {
       const students = (studentsResult.data ?? []) as StudentRow[];
       const circles = (circlesResult.data ?? []) as CircleRow[];
       const plans = (plansResult.data ?? []) as PlanRow[];
-      const plannedStudentIds = new Set(plans.map((plan) => plan.student_id).filter(Boolean));
+      const plansByStudent = groupPlansByStudent(plans);
+      const plannedStudentIds = new Set(Array.from(plansByStudent.keys()));
       const attendance = ((attendanceResult.data ?? []) as AttendanceRow[]).filter(
         (record) => isStudyDay(record.date) && plannedStudentIds.has(record.student_id),
       );
@@ -748,13 +765,11 @@ export default function StatisticsPage() {
 
       const studentNames = new Map(students.map((student) => [student.id, student.name?.trim() || TEXT.unknownStudent]));
       const studentCircles = new Map(students.map((student) => [student.id, student.halaqah?.trim() || TEXT.unknownCircle]));
-      const plansByStudent = new Map(plans.map((plan) => [plan.student_id, plan]));
-
       const studentStats = new Map<string, StudentSummary>();
       const circleStats = new Map<string, CircleSummary>();
 
-      for (const plan of plans) {
-        const circleName = studentCircles.get(plan.student_id) ?? TEXT.unknownCircle;
+      for (const studentId of plannedStudentIds) {
+        const circleName = studentCircles.get(studentId) ?? TEXT.unknownCircle;
 
         if (circleName === TEXT.unknownCircle) {
           continue;
@@ -784,7 +799,8 @@ export default function StatisticsPage() {
 
       for (const record of sortedAttendance) {
         const studentId = record.student_id;
-        const plan = plansByStudent.get(studentId);
+        const studentPlans = plansByStudent.get(studentId) || [];
+        const plan = getPlanForDate(studentPlans, record.date);
         const circleName = record.halaqah?.trim() || studentCircles.get(studentId) || TEXT.unknownCircle;
 
         // Students without plans should not affect student totals or circle performance ratios.

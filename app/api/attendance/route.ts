@@ -10,7 +10,7 @@ import {
   isEvaluatedAttendance,
   isNonEvaluatedAttendance,
 } from "@/lib/student-attendance"
-import { getOrCreateActiveSemester } from "@/lib/semesters"
+import { getOrCreateActiveSemester, isNoActiveSemesterError } from "@/lib/semesters"
 
 function getKsaDateString() {
   const formatter = new Intl.DateTimeFormat("en-CA", {
@@ -144,6 +144,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ records: recordsWithEvaluations })
   } catch (error) {
     console.error("[v0] Error in attendance API:", error)
+    if (isNoActiveSemesterError(error)) {
+      return NextResponse.json({ error: "لا يوجد فصل نشط حاليًا. ابدأ فصلًا جديدًا قبل تسجيل الحضور." }, { status: 409 })
+    }
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -509,6 +512,9 @@ export async function POST(request: NextRequest) {
     )
   } catch (error) {
     console.error("[v0] Error in attendance POST:", error)
+    if (isNoActiveSemesterError(error)) {
+      return NextResponse.json({ error: "لا يوجد فصل نشط حاليًا. ابدأ فصلًا جديدًا قبل تسجيل الحضور أو التقييم." }, { status: 409 })
+    }
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

@@ -20,7 +20,7 @@ import {
   subtractMemorizedRangeFromRanges,
   type PreviousMemorizationRange,
 } from "@/lib/quran-data"
-import { getOrCreateActiveSemester } from "@/lib/semesters"
+import { getOrCreateActiveSemester, isNoActiveSemesterError } from "@/lib/semesters"
 import { normalizeGuardianPhoneForStorage } from "@/lib/phone-number"
 
 function getSupabaseErrorMessage(error: unknown) {
@@ -54,6 +54,16 @@ function normalizeStudentMastery<T extends { current_juzs?: number[] | null; com
 function isMissingStudentExamsTable(error: unknown) {
   const message = String((error as { message?: string } | null)?.message || error || "")
   return /student_exams/i.test(message) && /does not exist|not exist|relation|table/i.test(message)
+}
+
+function isMissingResetStudentMemorizationFunction(error: unknown) {
+  const message = String((error as { message?: string } | null)?.message || error || "")
+  return /reset_student_memorization_atomic/i.test(message) && /does not exist|not exist|function|rpc/i.test(message)
+}
+
+function isMissingRemoveStudentMemorizedRangeFunction(error: unknown) {
+  const message = String((error as { message?: string } | null)?.message || error || "")
+  return /remove_student_memorized_range_atomic/i.test(message) && /does not exist|not exist|function|rpc/i.test(message)
 }
 
 async function clearPassedStudentExams(
@@ -399,7 +409,9 @@ export async function GET(request: Request) {
           }
         }
       } catch (error) {
-        console.error("[students] Mastery fallback lookup failed:", error)
+        if (!isNoActiveSemesterError(error)) {
+          console.error("[students] Mastery fallback lookup failed:", error)
+        }
       }
     }
 
@@ -500,41 +512,17 @@ export async function PATCH(request: Request) {
       }
 
       const activeSemester = await getOrCreateActiveSemester(supabase)
-      const { error: deletePlanError } = await supabase
-        .from("student_plans")
-        .delete()
-        .eq("student_id", studentId)
-        .eq("semester_id", activeSemester.id)
-
-      if (deletePlanError) {
-        console.error("[students] Error deleting active plan during memorization reset:", deletePlanError.message)
-        return NextResponse.json({ error: "فشل في حذف الخطة الحالية للطالب" }, { status: 500 })
-      }
-
-      try {
-        await clearPassedStudentExams(supabase, studentId, activeSemester.id)
-      } catch (error) {
-        console.error("[students] Error clearing passed exams during memorization reset:", getSupabaseErrorMessage(error))
-        return NextResponse.json({ error: "فشل في مزامنة اختبارات الطالب بعد إعادة الحفظ" }, { status: 500 })
-      }
-
-      const { data, error } = await supabase
-        .from("students")
-        .update({
-          memorized_start_surah: null,
-          memorized_start_verse: null,
-          memorized_end_surah: null,
-          memorized_end_verse: null,
-          memorized_ranges: null,
-          completed_juzs: [],
-          current_juzs: [],
-        })
-        .eq("id", studentId)
-        .select()
-        .single()
+      const { data, error } = await supabase.rpc("reset_student_memorization_atomic", {
+        p_student_id: studentId,
+        p_semester_id: activeSemester.id,
+      })
 
       if (error) {
-        console.error("[students] Error resetting memorized range:", error.message)
+        if (isMissingResetStudentMemorizationFunction(error)) {
+          return NextResponse.json({ error: "دالة إعادة الحفظ الذرية غير موجودة بعد. نفذ ملف scripts/053_create_reset_student_memorization_atomic.sql ثم أعد المحاولة." }, { status: 503 })
+        }
+
+        console.error("[students] Error resetting memorized range atomically:", getSupabaseErrorMessage(error))
         return NextResponse.json({ error: "فشل في إعادة ضبط محفوظ الطالب" }, { status: 500 })
       }
 
@@ -579,49 +567,27 @@ export async function PATCH(request: Request) {
       const nextCurrentJuzs = Array.from(juzCoverage.currentJuzs).sort((left, right) => left - right)
       const removedCompletedJuzs = previousCompletedJuzs.filter((juzNumber) => !nextCompletedJuzs.includes(juzNumber))
 
-      if (removedCompletedJuzs.length > 0) {
-        try {
-          await clearPassedStudentExams(supabase, studentId, activeSemester.id, removedCompletedJuzs)
-        } catch (error) {
-          console.error("[students] Error clearing passed exams after memorized range removal:", getSupabaseErrorMessage(error))
-          return NextResponse.json({ error: "تم تعديل المحفوظ لكن فشل تحديث اختبارات الطالب المرتبطة" }, { status: 500 })
-        }
-      }
-
-      const { data, error } = await supabase
-        .from("students")
-        .update({
-          memorized_start_surah: legacyFields.prev_start_surah,
-          memorized_start_verse: legacyFields.prev_start_verse,
-          memorized_end_surah: legacyFields.prev_end_surah,
-          memorized_end_verse: legacyFields.prev_end_verse,
-          memorized_ranges: nextRanges.length > 0 ? nextRanges : null,
-          completed_juzs: nextCompletedJuzs,
-          current_juzs: nextCurrentJuzs,
-        })
-        .eq("id", studentId)
-        .select()
-        .single()
+      const { data, error } = await supabase.rpc("remove_student_memorized_range_atomic", {
+        p_student_id: studentId,
+        p_semester_id: activeSemester.id,
+        p_has_previous: legacyFields.has_previous,
+        p_prev_start_surah: legacyFields.prev_start_surah,
+        p_prev_start_verse: legacyFields.prev_start_verse,
+        p_prev_end_surah: legacyFields.prev_end_surah,
+        p_prev_end_verse: legacyFields.prev_end_verse,
+        p_previous_memorization_ranges: nextRanges.length > 0 ? nextRanges : null,
+        p_completed_juzs: nextCompletedJuzs,
+        p_current_juzs: nextCurrentJuzs,
+        p_removed_completed_juzs: removedCompletedJuzs,
+      })
 
       if (error) {
-        return NextResponse.json({ error: "فشل في تحديث محفوظ الطالب" }, { status: 500 })
-      }
+        if (isMissingRemoveStudentMemorizedRangeFunction(error)) {
+          return NextResponse.json({ error: "دالة حذف جزء من المحفوظ الذرية غير موجودة بعد. نفذ ملف scripts/054_create_remove_student_memorized_range_atomic.sql ثم أعد المحاولة." }, { status: 503 })
+        }
 
-      const { error: planUpdateError } = await supabase
-        .from("student_plans")
-        .update({
-          has_previous: legacyFields.has_previous,
-          prev_start_surah: legacyFields.prev_start_surah,
-          prev_start_verse: legacyFields.prev_start_verse,
-          prev_end_surah: legacyFields.prev_end_surah,
-          prev_end_verse: legacyFields.prev_end_verse,
-          previous_memorization_ranges: nextRanges.length > 0 ? nextRanges : null,
-        })
-        .eq("student_id", studentId)
-        .eq("semester_id", activeSemester.id)
-
-      if (planUpdateError) {
-        return NextResponse.json({ error: "تم تعديل محفوظ الطالب لكن فشل تحديث الخطة الحالية" }, { status: 500 })
+        console.error("[students] Error removing memorized range atomically:", getSupabaseErrorMessage(error))
+        return NextResponse.json({ error: "فشل في حذف الجزء المحدد من محفوظ الطالب" }, { status: 500 })
       }
 
       return NextResponse.json({
@@ -742,6 +708,9 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ success: true, student: normalizeStudentMastery(data) }, { status: 200 })
   } catch (error) {
     console.error("[v0] Error in PATCH /api/students:", error)
+    if (isNoActiveSemesterError(error)) {
+      return NextResponse.json({ error: "لا يوجد فصل نشط حاليًا. ابدأ فصلًا جديدًا قبل تنفيذ هذه العملية." }, { status: 409 })
+    }
     return NextResponse.json({ error: "حدث خطأ في الخادم" }, { status: 500 })
   }
 }

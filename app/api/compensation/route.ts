@@ -2,8 +2,8 @@ import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 import { ensureStudentAccess, ensureTeacherScope, isTeacherRole, requireRoles } from "@/lib/auth/guards"
 import { getPlanSessionContent, resolvePlanTotalDays } from "@/lib/quran-data"
-import { getCompletedMemorizationDays, getPendingSessionIndices } from "@/lib/plan-progress"
-import { getOrCreateActiveSemester, isMissingSemestersTable } from "@/lib/semesters"
+import { getScheduledSessionProgress } from "@/lib/plan-progress"
+import { getOrCreateActiveSemester, isMissingSemestersTable, isNoActiveSemesterError } from "@/lib/semesters"
 import { isEvaluatedAttendance } from "@/lib/student-attendance"
 
 // POST /api/compensation
@@ -98,8 +98,8 @@ export async function POST(request: Request) {
       return advancingLevels.has(latestEvaluation?.hafiz_level ?? "")
     })
 
-    const completedDays = getCompletedMemorizationDays(passingRecords, scheduledDates.length)
-    const pendingSessionIndices = getPendingSessionIndices(scheduledDates.length, completedDays)
+    const sessionProgress = getScheduledSessionProgress(passingRecords, scheduledDates)
+    const pendingSessionIndices = sessionProgress.pendingSessionIndices
 
     if (pendingSessionIndices.length === 0) {
       return NextResponse.json({ error: "لا توجد أيام مستحقة للتعويض" }, { status: 409 })
@@ -199,6 +199,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, newPoints })
   } catch (error: any) {
     console.error("[compensation error]", error)
+    if (isNoActiveSemesterError(error)) {
+      return NextResponse.json({ error: "لا يوجد فصل نشط حاليًا. ابدأ فصلًا جديدًا قبل تسجيل التعويض." }, { status: 409 })
+    }
     if (isMissingSemestersTable(error)) {
       return NextResponse.json({ error: "جدول الفصول غير موجود بعد. نفذ ملف scripts/046_create_semesters.sql ثم أعد المحاولة." }, { status: 503 })
     }

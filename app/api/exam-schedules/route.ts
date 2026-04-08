@@ -6,7 +6,7 @@ import { formatExamPortionLabel, getEligibleExamPortions } from "@/lib/student-e
 import { getJuzNumberForPortion, isValidExamPortionNumber, normalizeExamPortionType } from "@/lib/exam-portions"
 import { getCompletedMemorizationDays } from "@/lib/plan-progress"
 import { insertNotificationsAndSendPush } from "@/lib/push-notifications"
-import { getOrCreateActiveSemester, isMissingSemestersTable } from "@/lib/semesters"
+import { getOrCreateActiveSemester, isMissingSemestersTable, isNoActiveSemesterError } from "@/lib/semesters"
 import { createClient } from "@/lib/supabase/server"
 import { buildExamAppNotificationMessage, enqueueWhatsAppMessage, fillExamWhatsAppTemplate, getExamWhatsAppTemplates } from "@/lib/whatsapp-notification-templates"
 
@@ -215,6 +215,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ schedules: data || [], tableMissing: false, portionSettings })
   } catch (error) {
     console.error("[exam-schedules][GET]", error)
+    if (isNoActiveSemesterError(error)) {
+      return NextResponse.json({ schedules: [], tableMissing: false, error: "لا يوجد فصل نشط حاليًا." }, { status: 409 })
+    }
     if (isMissingSemestersTable(error)) {
       return NextResponse.json({ error: "جدول الفصول غير موجود بعد. نفذ ملف scripts/046_create_semesters.sql ثم أعد المحاولة." }, { status: 503 })
     }
@@ -369,6 +372,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, schedule }, { status: 201 })
   } catch (error) {
     console.error("[exam-schedules][POST]", error)
+    if (isNoActiveSemesterError(error)) {
+      return NextResponse.json({ error: "لا يوجد فصل نشط حاليًا. ابدأ فصلًا جديدًا قبل جدولة الاختبارات." }, { status: 409 })
+    }
     if (isMissingSemestersTable(error)) {
       return NextResponse.json({ error: "جدول الفصول غير موجود بعد. نفذ ملف scripts/046_create_semesters.sql ثم أعد المحاولة." }, { status: 503 })
     }

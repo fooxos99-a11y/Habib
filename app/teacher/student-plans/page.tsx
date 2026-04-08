@@ -782,7 +782,7 @@ export default function TeacherStudentPlansPage() {
           weekly_muraajaa_min_daily_pages: muraajaaMode === "weekly_distributed" ? parseFloat(weeklyReviewMinDailyPages) : null,
           weekly_muraajaa_start_day: muraajaaMode === "weekly_distributed" ? parseInt(weeklyReviewStartDay, 10) : null,
           weekly_muraajaa_end_day: muraajaaMode === "weekly_distributed" ? parseInt(weeklyReviewEndDay, 10) : null,
-          start_date: (selectedStudent ? studentPlans[selectedStudent.id]?.start_date : null) || getSaudiDateString(),
+          start_date: null,
         }),
       })
 
@@ -873,10 +873,13 @@ export default function TeacherStudentPlansPage() {
         item.id === student.id
           ? {
               ...item,
+              completed_juzs: [],
+              current_juzs: [],
               memorized_start_surah: null,
               memorized_start_verse: null,
               memorized_end_surah: null,
               memorized_end_verse: null,
+              memorized_ranges: null,
             }
           : item
       )))
@@ -1452,15 +1455,6 @@ export default function TeacherStudentPlansPage() {
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
-                        {plan && (
-                          <button
-                            onClick={() => handleDeletePlan(student.id)}
-                            className="p-1.5 rounded-lg hover:bg-red-50 text-neutral-300 hover:text-red-500 transition-colors"
-                            title="حذف الخطة"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
                         <button
                           onClick={() => handleResetMemorization(student)}
                           disabled={!hasStoredMemorized || resettingStudentId === student.id}

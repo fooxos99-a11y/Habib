@@ -894,6 +894,15 @@ function getPlanTraversalSegments(plan: SegmentedPlanLike) {
     .filter((segment) => segment.totalPages > 0.0001)
 }
 
+export function getPlanTraversalRanges(plan: SegmentedPlanLike) {
+  return getPlanTraversalSegments(plan).map((segment) => ({
+    startSurahNumber: segment.startSurahNumber,
+    startVerseNumber: segment.startVerseNumber,
+    endSurahNumber: segment.endSurahNumber,
+    endVerseNumber: segment.endVerseNumber,
+  }))
+}
+
 function getPlanTraversalTotalDays(segments: PlanSegment[], dailyPages: number) {
   if (!Number.isFinite(dailyPages) || dailyPages <= 0) return 0
 

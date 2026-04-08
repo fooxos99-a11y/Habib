@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server"
 
 import { requireRoles } from "@/lib/auth/guards"
-import { getOrCreateActiveSemester, isMissingSemestersTable } from "@/lib/semesters"
+import { DEFAULT_ACTIVE_SEMESTER_NAME, getActiveSemester, getOrCreateActiveSemester, isMissingSemestersTable, isNoActiveSemesterError } from "@/lib/semesters"
 import { buildSemesterArchiveData, getSemesterSnapshot } from "@/lib/semester-archive"
+import { getSaudiDateString } from "@/lib/saudi-time"
 import { createClient } from "@/lib/supabase/server"
 
 function getErrorMessage(error: unknown) {
@@ -32,7 +33,7 @@ export async function GET(request: Request) {
     }
 
     const supabase = await createClient()
-    const activeSemester = await getOrCreateActiveSemester(supabase)
+    const activeSemester = await getActiveSemester(supabase)
     const { searchParams } = new URL(request.url)
     const semesterId = String(searchParams.get("semester_id") || "").trim()
     const attendanceDate = String(searchParams.get("attendance_date") || "").trim()
@@ -55,7 +56,7 @@ export async function GET(request: Request) {
           if (snapshot && semester.status === "archived") {
             return {
               ...semester,
-              is_active: semester.id === activeSemester.id,
+              is_active: semester.id === activeSemester?.id,
               plans_count: snapshot.counts.plans_count,
               student_records_count: snapshot.counts.student_records_count,
               absences_count: snapshot.counts.absences_count,
@@ -75,7 +76,7 @@ export async function GET(request: Request) {
 
           return {
             ...semester,
-            is_active: semester.id === activeSemester.id,
+            is_active: semester.id === activeSemester?.id,
             plans_count: plansResult.count || 0,
             student_records_count: attendanceResult.count || 0,
             absences_count: absencesResult.count || 0,
@@ -88,7 +89,7 @@ export async function GET(request: Request) {
         }),
       )
 
-      return NextResponse.json({ semesters: enrichedSemesters, activeSemesterId: activeSemester.id })
+      return NextResponse.json({ semesters: enrichedSemesters, activeSemesterId: activeSemester?.id || null })
     }
 
     const { data: semester, error: semesterError } = await supabase
@@ -307,10 +308,65 @@ export async function GET(request: Request) {
       absences: archiveBundle.absences,
       finance: archiveBundle.finance,
       snapshot,
-      isActive: semester.id === activeSemester.id,
+      isActive: semester.id === activeSemester?.id,
     })
   } catch (error) {
     console.error("[semesters][GET]", error)
+    if (isMissingSemestersTable(error)) {
+      return NextResponse.json({ error: "جدول الفصول غير موجود بعد. نفذ ملف scripts/046_create_semesters.sql ثم أعد المحاولة." }, { status: 503 })
+    }
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 })
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const auth = await requireRoles(request, ["admin", "supervisor"])
+    if ("response" in auth) {
+      return auth.response
+    }
+
+    const supabase = await createClient()
+    const body = await request.json()
+    const name = String(body.name || "").trim() || DEFAULT_ACTIVE_SEMESTER_NAME
+    const startDate = String(body.start_date || "").trim() || getSaudiDateString()
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+      return NextResponse.json({ error: "تاريخ بداية الفصل غير صالح" }, { status: 400 })
+    }
+
+    const activeSemester = await getActiveSemester(supabase)
+    if (activeSemester?.id) {
+      return NextResponse.json({ error: "يوجد فصل نشط بالفعل. أنهِ الفصل الحالي أولاً." }, { status: 409 })
+    }
+
+    const { data: existingSemester } = await supabase
+      .from("semesters")
+      .select("id")
+      .ilike("name", name)
+      .maybeSingle()
+
+    if (existingSemester?.id) {
+      return NextResponse.json({ error: "يوجد فصل محفوظ بنفس الاسم بالفعل" }, { status: 400 })
+    }
+
+    const { data: newSemester, error: createSemesterError } = await supabase
+      .from("semesters")
+      .insert({
+        name,
+        status: "active",
+        start_date: startDate,
+      })
+      .select("id, name, status, start_date, end_date, archived_at, archive_snapshot, created_at, updated_at")
+      .single()
+
+    if (createSemesterError) {
+      throw createSemesterError
+    }
+
+    return NextResponse.json({ success: true, semester: newSemester }, { status: 201 })
+  } catch (error) {
+    console.error("[semesters][POST]", error)
     if (isMissingSemestersTable(error)) {
       return NextResponse.json({ error: "جدول الفصول غير موجود بعد. نفذ ملف scripts/046_create_semesters.sql ثم أعد المحاولة." }, { status: 503 })
     }
@@ -326,7 +382,7 @@ export async function DELETE(request: Request) {
     }
 
     const supabase = await createClient()
-    const activeSemester = await getOrCreateActiveSemester(supabase)
+    const activeSemester = await getActiveSemester(supabase)
     const { searchParams } = new URL(request.url)
     const semesterId = String(searchParams.get("semester_id") || "").trim()
 
@@ -348,7 +404,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "الفصل غير موجود" }, { status: 404 })
     }
 
-    if (semester.id === activeSemester.id || semester.status === "active") {
+    if (semester.id === activeSemester?.id || semester.status === "active") {
       return NextResponse.json({ error: "لا يمكن حذف الفصل النشط" }, { status: 400 })
     }
 
@@ -395,6 +451,9 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ success: true, deletedSemesterId: semester.id, deletedSemesterName: semester.name })
   } catch (error) {
     console.error("[semesters][DELETE]", error)
+    if (isNoActiveSemesterError(error)) {
+      return NextResponse.json({ error: "لا يوجد فصل نشط حاليًا" }, { status: 409 })
+    }
     if (isMissingSemestersTable(error)) {
       return NextResponse.json({ error: "جدول الفصول غير موجود بعد. نفذ ملف scripts/046_create_semesters.sql ثم أعد المحاولة." }, { status: 503 })
     }

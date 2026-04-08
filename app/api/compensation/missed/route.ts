@@ -2,8 +2,8 @@ import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 import { ensureStudentAccess, requireRoles } from "@/lib/auth/guards"
 import { getPlanSessionContent, resolvePlanTotalDays } from "@/lib/quran-data"
-import { getCompletedMemorizationDays, getPendingSessionIndices } from "@/lib/plan-progress"
-import { getOrCreateActiveSemester, isMissingSemestersTable } from "@/lib/semesters"
+import { getScheduledSessionProgress } from "@/lib/plan-progress"
+import { getOrCreateActiveSemester, isMissingSemestersTable, isNoActiveSemesterError } from "@/lib/semesters"
 import { isEvaluatedAttendance } from "@/lib/student-attendance"
 
 interface MissedDayItem {
@@ -113,8 +113,8 @@ export async function GET(request: Request) {
       return ADVANCING_LEVELS.includes(ev.hafiz_level ?? "")
     })
 
-    const completedDays = getCompletedMemorizationDays(passingRecords, scheduledDates.length)
-    const pendingSessionIndices = getPendingSessionIndices(scheduledDates.length, completedDays)
+    const sessionProgress = getScheduledSessionProgress(passingRecords, scheduledDates)
+    const pendingSessionIndices = sessionProgress.pendingSessionIndices
     const missedDaysList: MissedDayItem[] = []
 
     if (pendingSessionIndices.length === 0) {
@@ -152,6 +152,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ missedDays: missedDaysList })
   } catch (error: any) {
     console.error("[compensation error]", error)
+    if (isNoActiveSemesterError(error)) {
+      return NextResponse.json({ missedDays: [], error: "لا يوجد فصل نشط حاليًا." }, { status: 409 })
+    }
     if (isMissingSemestersTable(error)) {
       return NextResponse.json({ error: "جدول الفصول غير موجود بعد. نفذ ملف scripts/046_create_semesters.sql ثم أعد المحاولة." }, { status: 503 })
     }

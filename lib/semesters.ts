@@ -1,6 +1,7 @@
 import { getSaudiDateString } from "@/lib/saudi-time"
 
 export const DEFAULT_ACTIVE_SEMESTER_NAME = "الفصل الحالي"
+const NO_ACTIVE_SEMESTER_CODE = "NO_ACTIVE_SEMESTER"
 
 export type SemesterRow = {
   id: string
@@ -28,7 +29,16 @@ export function isMissingSemestersTable(error: unknown) {
   )
 }
 
-export async function getOrCreateActiveSemester(supabase: any) {
+export function isNoActiveSemesterError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return false
+  }
+
+  const candidate = error as { code?: unknown; message?: unknown }
+  return candidate.code === NO_ACTIVE_SEMESTER_CODE || candidate.message === NO_ACTIVE_SEMESTER_CODE
+}
+
+export async function getActiveSemester(supabase: any) {
   const { data: existingSemester, error: existingSemesterError } = await supabase
     .from("semesters")
     .select("id, name, status, start_date, end_date, archived_at, created_at, updated_at")
@@ -41,23 +51,14 @@ export async function getOrCreateActiveSemester(supabase: any) {
     throw existingSemesterError
   }
 
+  return existingSemester?.id ? (existingSemester as SemesterRow) : null
+}
+
+export async function getOrCreateActiveSemester(supabase: any) {
+  const existingSemester = await getActiveSemester(supabase)
   if (existingSemester?.id) {
-    return existingSemester as SemesterRow
+    return existingSemester
   }
 
-  const { data: createdSemester, error: createdSemesterError } = await supabase
-    .from("semesters")
-    .insert({
-      name: DEFAULT_ACTIVE_SEMESTER_NAME,
-      status: "active",
-      start_date: getSaudiDateString(),
-    })
-    .select("id, name, status, start_date, end_date, archived_at, created_at, updated_at")
-    .single()
-
-  if (createdSemesterError) {
-    throw createdSemesterError
-  }
-
-  return createdSemester as SemesterRow
+  throw Object.assign(new Error(NO_ACTIVE_SEMESTER_CODE), { code: NO_ACTIVE_SEMESTER_CODE })
 }
