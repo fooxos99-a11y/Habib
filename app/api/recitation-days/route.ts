@@ -10,6 +10,7 @@ import {
 } from "@/lib/recitation-days"
 import { getSiteSetting } from "@/lib/site-settings"
 import { enqueueWhatsAppMessage } from "@/lib/whatsapp-notification-templates"
+import { isWhatsAppWorkerReady, readWhatsAppWorkerStatus } from "@/lib/whatsapp-worker-status"
 import {
   DEFAULT_RECITATION_DAY_LIFECYCLE_NOTIFICATION_TEMPLATES,
   fillRecitationDayLifecycleTemplate,
@@ -47,6 +48,9 @@ async function sendLifecycleNotifications(params: {
   sessionUserId: string
   date: string
 }) {
+  const whatsappStatus = await readWhatsAppWorkerStatus()
+  const shouldQueueWhatsApp = isWhatsAppWorkerReady(whatsappStatus)
+
   const templates = normalizeRecitationDayLifecycleNotificationTemplates(
     await getSiteSetting(
       RECITATION_DAY_LIFECYCLE_NOTIFICATION_SETTINGS_ID,
@@ -76,6 +80,11 @@ async function sendLifecycleNotifications(params: {
     } catch (error) {
       console.error(`[recitation-days][${params.phase}] failed to insert app notifications`, error)
     }
+  }
+
+  if (!shouldQueueWhatsApp) {
+    console.info(`[recitation-days][${params.phase}] skipped WhatsApp lifecycle notifications because WhatsApp is not ready`)
+    return
   }
 
   for (const recipient of params.recipients) {
