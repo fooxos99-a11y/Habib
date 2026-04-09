@@ -44,8 +44,8 @@ const DEFAULT_STATUS: WhatsAppStatusResponse = {
 }
 
 function getAutoRefreshIntervalMs(status: WhatsAppStatusResponse, imageFailed: boolean) {
-  if (status.ready) {
-    return 0
+  if (status.ready && status.authenticated && status.status === "connected") {
+    return 4000
   }
 
   if (imageFailed) {
@@ -172,6 +172,7 @@ export default function WhatsAppQrPage() {
   const [isRefreshingQr, setIsRefreshingQr] = useState(false)
   const [qrImageVersion, setQrImageVersion] = useState(0)
   const statusUi = getStatusUi(status)
+  const isConnected = status.ready && status.authenticated && status.status === "connected"
   const canDisconnect = status.ready && status.authenticated && status.status === "connected" && !isDisconnecting
   const autoRefreshIntervalMs = getAutoRefreshIntervalMs(status, imageFailed)
   const qrImageSrc = status.qrImageUrl
@@ -403,7 +404,7 @@ export default function WhatsAppQrPage() {
                   <div className="flex min-h-[360px] flex-col items-center justify-center gap-4 rounded-[28px] border border-dashed border-[#d5dfef] bg-[linear-gradient(180deg,#fbfcff_0%,#f2f6ff_100%)] px-6 py-10 text-center">
                     {status.ready ? <CheckCircle2 className="h-16 w-16 text-emerald-500" /> : <Smartphone className="h-16 w-16 text-[#3453a7]" />}
                     <div className="space-y-2">
-                      <p className="text-xl font-black text-[#1a2332]">{status.ready ? "تم الربط بنجاح" : statusUi.label}</p>
+                      <p className="text-xl font-black text-[#1a2332]">{isConnected ? "تم الربط بنجاح" : statusUi.label}</p>
                       <p className="text-sm font-bold text-[#64748b]">{statusUi.description}</p>
                     </div>
                   </div>

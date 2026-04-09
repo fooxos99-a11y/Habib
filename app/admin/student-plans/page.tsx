@@ -1684,13 +1684,6 @@ export default function StudentPlansPage() {
                         {/* أزرار */}
                         <div className="flex items-center gap-2 shrink-0">
                           <button
-                            onClick={() => handleResetMemorization(student)}
-                            disabled={!hasStoredMemorized || resettingStudentId === student.id}
-                            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            حذف المحفوظ
-                          </button>
-                          <button
                             onClick={() => openAddDialog(student)}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#3453a7]/10 hover:bg-[#3453a7]/20 text-[#4f73d1] border border-[#3453a7]/30 transition-colors"
                           >

@@ -257,7 +257,7 @@ export default function CircleManagement() {
 
             <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
               <DialogTrigger asChild>
-                <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-[#3453a7] bg-[#3453a7] hover:bg-[#28448e] !text-[#ffffff] hover:!text-[#ffffff] text-sm font-semibold transition-colors">
+                <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-[#3453a7] bg-[#3453a7] text-white hover:bg-[#28448e] hover:text-white [&_svg]:text-white text-sm font-semibold transition-colors">
                   <Plus className="w-4 h-4" />
                   إضافة
                 </button>
@@ -280,7 +280,7 @@ export default function CircleManagement() {
                 </div>
                 <div className="flex justify-end gap-3">
                   <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} className="border-[#3453a7]/50 text-neutral-600">إلغاء</Button>
-                  <Button onClick={handleAddCircle} className="border border-[#3453a7]/50 bg-[#3453a7]/10 hover:bg-[#3453a7]/20 text-[#4f73d1] hover:text-[#3453a7]">حفظ</Button>
+                  <Button onClick={handleAddCircle} className="border border-[#3453a7] bg-[#3453a7] text-white hover:bg-[#28448e] hover:text-white disabled:bg-[#3453a7] disabled:text-white disabled:opacity-100">حفظ</Button>
                 </div>
               </DialogContent>
             </Dialog>
@@ -304,7 +304,7 @@ export default function CircleManagement() {
                 </div>
                 <div className="flex justify-end gap-3">
                   <Button variant="outline" onClick={() => setIsEditDialogOpen(false)} className="border-[#3453a7]/50 text-neutral-600">إلغاء</Button>
-                  <Button onClick={handleSaveCircleEdit} className="border border-[#3453a7]/50 bg-[#3453a7]/10 hover:bg-[#3453a7]/20 text-[#4f73d1] hover:text-[#3453a7]">حفظ</Button>
+                  <Button onClick={handleSaveCircleEdit} className="border border-[#3453a7] bg-[#3453a7] text-white hover:bg-[#28448e] hover:text-white disabled:bg-[#3453a7] disabled:text-white disabled:opacity-100">حفظ</Button>
                 </div>
               </DialogContent>
             </Dialog>
@@ -329,33 +329,34 @@ export default function CircleManagement() {
               </div>
               <div className="divide-y divide-[#3453a7]/20">
                 {circles.map((circle) => (
-                  <div key={circle.name} className="flex items-center justify-between px-6 py-5 hover:bg-[#3453a7]/3 transition-colors">
+                  <div key={circle.name} className="px-6 py-5 hover:bg-[#3453a7]/3 transition-colors">
                     <div className="flex items-center gap-4">
                       <div className="w-11 h-11 rounded-xl bg-[#3453a7]/10 border border-[#3453a7]/30 flex items-center justify-center shrink-0">
                         <BookOpen className="w-5 h-5 text-[#3453a7]" />
                       </div>
-                      <div>
-                        <p className="text-base font-bold text-[#1a2332]">{circle.name}</p>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-base font-bold text-[#1a2332] break-words">{circle.name}</p>
+                        <p className="mt-1 text-sm text-neutral-400">{circle.studentCount} طالب</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="mt-4 grid grid-cols-3 gap-2">
                       <button
                         onClick={() => handleOpenEditCircle(circle)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#d8e4fb] text-[#4f73d1] hover:bg-[#3453a7]/10 hover:text-[#3453a7] text-sm font-medium transition-colors"
+                        className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-[#d8e4fb] text-[#4f73d1] hover:bg-[#3453a7]/10 hover:text-[#3453a7] text-sm font-medium transition-colors"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
                         تعديل
                       </button>
                       <button
                         onClick={() => handleViewCircle(circle)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#3453a7]/50 text-[#4f73d1] hover:bg-[#3453a7]/10 hover:text-[#3453a7] text-sm font-medium transition-colors"
+                        className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-[#3453a7]/50 text-[#4f73d1] hover:bg-[#3453a7]/10 hover:text-[#3453a7] text-sm font-medium transition-colors"
                       >
                         <Eye className="w-3.5 h-3.5" />
                         عرض الطلاب
                       </button>
                       <button
                         onClick={() => handleRemoveCircle(circle.name)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 text-red-400 hover:bg-red-50 hover:text-red-600 hover:border-red-300 text-sm font-medium transition-colors"
+                        className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-red-200 text-red-400 hover:bg-red-50 hover:text-red-600 hover:border-red-300 text-sm font-medium transition-colors"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                         إزالة

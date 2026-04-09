@@ -195,22 +195,6 @@ export default function WhatsAppSendPage() {
     )
   }
 
-  const insertTemplateVariable = (token: string) => {
-    setMessage((prev) => {
-      const trimmedPrev = prev.trimEnd()
-
-      if (!trimmedPrev) {
-        return token
-      }
-
-      const separator = trimmedPrev.endsWith("{") || trimmedPrev.endsWith("\n") || trimmedPrev.endsWith(" ")
-        ? ""
-        : " "
-
-      return `${prev}${separator}${token}`
-    })
-  }
-
   const handleSendMessages = async () => {
     if (!isWhatsAppReady) {
       toast({
@@ -442,19 +426,6 @@ export default function WhatsAppSendPage() {
                         rows={8}
                         className="resize-none"
                       />
-                      <div className="flex flex-wrap gap-2">
-                        {TEMPLATE_VARIABLES.map((variable) => (
-                          <Button
-                            key={variable.token}
-                            type="button"
-                            variant="outline"
-                            className="h-8 rounded-full border-[#3453a7]/25 px-3 text-xs text-[#3453a7] hover:bg-[#3453a7]/5"
-                            onClick={() => insertTemplateVariable(variable.token)}
-                          >
-                            {variable.token}
-                          </Button>
-                        ))}
-                      </div>
                       <p className="text-xs text-gray-500">{message.length} حرف</p>
                     </div>
 
@@ -488,7 +459,7 @@ export default function WhatsAppSendPage() {
                       onClick={handleSendMessages}
                       disabled={isSending || isWhatsAppStatusLoading || !isWhatsAppReady || selectedStudents.length === 0 || !message.trim()}
                       variant="outline"
-                      className="w-full text-sm h-9 rounded-lg border-[#3453a7]/50 text-neutral-600"
+                      className="w-full text-sm h-9 rounded-lg border-[#3453a7]/50 bg-[linear-gradient(135deg,#24428f_0%,#3453a7_55%,#4f73d1_100%)] text-white hover:brightness-105 disabled:text-white disabled:opacity-60"
                     >
                       {isSending ? (
                         <>جاري الإرسال</>
@@ -541,7 +512,7 @@ export default function WhatsAppSendPage() {
                       >
                         {allFilteredSelected
                           ? "إلغاء تحديد الكل"
-                          : `تحديد الظاهر (${filteredStudents.length})`}
+                          : "تحديد الكل"}
                       </Button>
                     </div>
 

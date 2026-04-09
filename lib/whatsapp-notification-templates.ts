@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { normalizeWhatsAppPhoneNumber } from "@/lib/phone-number"
+import { isWhatsAppWorkerReady, readWhatsAppWorkerStatus } from "@/lib/whatsapp-worker-status"
 
 import { normalizeAbsenceNotificationTemplates, type AbsenceNotificationTemplates } from "@/lib/absence-notifications"
 
@@ -200,6 +201,11 @@ export async function enqueueWhatsAppMessage(supabase: SupabaseLike, params: {
 
   const trimmedMessage = params.message.trim()
   const adminSupabase = createAdminClient()
+  const workerStatus = await readWhatsAppWorkerStatus()
+
+  if (!isWhatsAppWorkerReady(workerStatus)) {
+    return { queued: false, reason: "whatsapp-not-ready" as const }
+  }
 
   if (params.dedupeDate) {
     const { count, error } = await adminSupabase

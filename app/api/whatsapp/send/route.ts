@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { normalizeWhatsAppPhoneNumber } from "@/lib/phone-number"
+import { isWhatsAppWorkerReady, readWhatsAppWorkerStatus } from "@/lib/whatsapp-worker-status"
 
 import { NextResponse } from "next/server"
 
@@ -26,6 +27,14 @@ export async function POST(request: Request) {
     const body = await request.json()
     const { phoneNumber, message, userId, recipients } = body
     const normalizedMessage = typeof message === "string" ? message.trim() : ""
+    const workerStatus = await readWhatsAppWorkerStatus()
+
+    if (!isWhatsAppWorkerReady(workerStatus)) {
+      return NextResponse.json(
+        { error: "واتساب غير مرتبط حاليًا. اربط واتساب أولًا ثم أعد الإرسال." },
+        { status: 409 }
+      )
+    }
 
     if (!normalizedMessage && !Array.isArray(recipients)) {
       return NextResponse.json(

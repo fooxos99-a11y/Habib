@@ -838,6 +838,59 @@ async function loadPendingMessages() {
   }
 }
 
+async function skipPendingMessagesAfterReconnect() {
+  const { data, error } = await supabase
+    .from(QUEUE_TABLE)
+    .select("id")
+    .eq("status", "pending")
+
+  if (error) {
+    throw error
+  }
+
+  if (!data.length) {
+    return
+  }
+
+  const pendingIds = data
+    .map((row) => row.id)
+    .filter((value) => typeof value === "string" && value.trim().length > 0)
+
+  if (!pendingIds.length) {
+    return
+  }
+
+  const skippedAt = new Date().toISOString()
+  const skipReason = "Skipped after WhatsApp reconnect; resend manually."
+
+  const { error: queueError } = await supabase
+    .from(QUEUE_TABLE)
+    .update({
+      status: "failed",
+      error_message: skipReason,
+    })
+    .in("id", pendingIds)
+
+  if (queueError) {
+    throw queueError
+  }
+
+  const { error: historyError } = await supabase
+    .from(HISTORY_TABLE)
+    .update({
+      status: "failed",
+      error_message: skipReason,
+      sent_at: skippedAt,
+    })
+    .in("id", pendingIds)
+
+  if (historyError) {
+    throw historyError
+  }
+
+  log(`Skipped ${pendingIds.length} stale pending message(s) after reconnect.`)
+}
+
 function subscribeToQueueInserts() {
   const channel = supabase
     .channel("whatsapp-queue-worker")
@@ -943,11 +996,11 @@ async function bootstrap() {
     })
 
     try {
-      await loadPendingMessages()
+      await skipPendingMessagesAfterReconnect()
       await syncIncomingRepliesFromChats()
       await processQueue()
     } catch (error) {
-      log("Failed to load pending messages after WhatsApp became ready.", error)
+      log("Failed to finalize pending messages after WhatsApp became ready.", error)
     }
   })
 

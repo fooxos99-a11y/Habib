@@ -46,8 +46,8 @@ const DEFAULT_STATUS: WhatsAppStatusResponse = {
 }
 
 function getAutoRefreshIntervalMs(status: WhatsAppStatusResponse, imageFailed: boolean) {
-  if (status.ready) {
-    return 0
+  if (status.ready && status.authenticated && status.status === "connected") {
+    return 4000
   }
 
   if (imageFailed) {
@@ -154,6 +154,7 @@ export function WhatsAppQrDialog({ open, onOpenChange, initialStatus }: WhatsApp
   const [qrImageVersion, setQrImageVersion] = useState(0)
 
   const statusUi = useMemo(() => getStatusUi(status), [status])
+  const isConnected = status.ready && status.authenticated && status.status === "connected"
   const canDisconnect = status.ready && status.authenticated && status.status === "connected" && !isDisconnecting
   const autoRefreshIntervalMs = getAutoRefreshIntervalMs(status, imageFailed)
   const qrImageSrc = status.qrImageUrl
@@ -376,7 +377,7 @@ export function WhatsAppQrDialog({ open, onOpenChange, initialStatus }: WhatsApp
                   <Smartphone className="h-14 w-14 text-[#3453a7]" />
                 )}
                 <div className="space-y-2">
-                  <p className="text-lg font-black text-[#1a2332]">{status.ready ? "تم الربط بنجاح" : statusUi.label}</p>
+                  <p className="text-lg font-black text-[#1a2332]">{isConnected ? "تم الربط بنجاح" : statusUi.label}</p>
                   <p className="text-sm font-bold text-[#64748b]">{statusUi.description}</p>
                 </div>
               </div>
