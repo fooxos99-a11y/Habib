@@ -1023,6 +1023,10 @@ async function bootstrap() {
       authFailedAt: new Date().toISOString(),
       lastError: message,
     })
+
+    if (!isResettingSession) {
+      void resetWhatsAppSession()
+    }
   })
 
   whatsappClient.on("disconnected", (reason) => {
@@ -1037,6 +1041,10 @@ async function bootstrap() {
       disconnectedAt: new Date().toISOString(),
       lastError: String(reason || "Disconnected"),
     })
+
+    if (!isResettingSession) {
+      void resetWhatsAppSession()
+    }
   })
 
   setInterval(() => {

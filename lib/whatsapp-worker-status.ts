@@ -76,7 +76,14 @@ function readLocalWhatsAppWorkerStatus() {
   }
 }
 
+function getStatusTimestamp(status: ReturnType<typeof getDefaultWhatsAppWorkerStatus>) {
+  const value = status.lastUpdatedAt || status.lastHeartbeatAt || status.qrUpdatedAt || status.connectedAt || status.disconnectedAt || null
+  return value ? new Date(value).getTime() : 0
+}
+
 export async function readWhatsAppWorkerStatus() {
+  const localStatus = readLocalWhatsAppWorkerStatus()
+
   try {
     const supabase = createAdminClient()
     const { data, error } = await supabase
@@ -86,13 +93,14 @@ export async function readWhatsAppWorkerStatus() {
       .maybeSingle()
 
     if (!error && data?.value) {
-      return finalizeStatus(data.value as WorkerStatusPayload, false)
+      const sharedStatus = finalizeStatus(data.value as WorkerStatusPayload, false)
+      return getStatusTimestamp(localStatus) > getStatusTimestamp(sharedStatus) ? localStatus : sharedStatus
     }
   } catch {
     // Fall back to local status files when shared state is unavailable.
   }
 
-  return readLocalWhatsAppWorkerStatus()
+  return localStatus
 }
 
 export function isWhatsAppWorkerReady(status: ReturnType<typeof getDefaultWhatsAppWorkerStatus>) {

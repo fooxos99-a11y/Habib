@@ -236,7 +236,7 @@ export function GlobalCirclesDialog() {
               <span>إدارة الحلقات</span>
             </DialogTitle>
             <div className="absolute left-6 top-1/2 -translate-y-1/2">
-              <Button onClick={() => setIsAddDialogOpen(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-[#3453a7]/50 bg-[#3453a7]/10 hover:bg-[#3453a7]/20 text-[#4f73d1] hover:text-[#3453a7] text-sm font-semibold shadow-none">
+              <Button onClick={() => setIsAddDialogOpen(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-[#3453a7] bg-[#3453a7] text-white hover:bg-[#24428f] hover:text-white [&_svg]:text-white shadow-none">
                 <Plus className="w-4 h-4" />
                 إضافة
               </Button>
@@ -255,33 +255,34 @@ export function GlobalCirclesDialog() {
             ) : (
               <div className="space-y-3">
                 {circles.map((circle) => (
-                  <div key={circle.name} className="flex items-center justify-between rounded-2xl border border-[#3453a7]/40 bg-white px-6 py-5 shadow-sm hover:bg-[#3453a7]/3 transition-colors">
+                  <div key={circle.name} className="rounded-2xl border border-[#3453a7]/40 bg-white px-6 py-5 shadow-sm hover:bg-[#3453a7]/3 transition-colors">
                     <div className="flex items-center gap-4">
                       <div className="w-11 h-11 rounded-xl bg-[#3453a7]/10 border border-[#3453a7]/30 flex items-center justify-center shrink-0">
                         <BookOpen className="w-5 h-5 text-[#3453a7]" />
                       </div>
-                      <div>
-                        <p className="text-base font-bold text-[#1a2332]">{circle.name}</p>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-base font-bold text-[#1a2332] break-words">{circle.name}</p>
+                        <p className="mt-1 text-sm text-neutral-400">{circle.studentCount} طالب</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="mt-4 grid grid-cols-3 gap-2">
                       <button
                         onClick={() => handleOpenEditCircle(circle)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#d8e4fb] text-[#4f73d1] hover:bg-[#3453a7]/10 hover:text-[#3453a7] text-sm font-medium transition-colors"
+                        className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-[#d8e4fb] text-[#4f73d1] hover:bg-[#3453a7]/10 hover:text-[#3453a7] text-sm font-medium transition-colors"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
                         تعديل
                       </button>
                       <button
                         onClick={() => handleViewCircle(circle)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#3453a7]/50 text-[#4f73d1] hover:bg-[#3453a7]/10 hover:text-[#3453a7] text-sm font-medium transition-colors"
+                        className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-[#3453a7]/50 text-[#4f73d1] hover:bg-[#3453a7]/10 hover:text-[#3453a7] text-sm font-medium transition-colors"
                       >
                         <Eye className="w-3.5 h-3.5" />
                         عرض الطلاب
                       </button>
                       <button
                         onClick={() => handleRemoveCircle(circle.name)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 text-red-400 hover:bg-red-50 hover:text-red-600 hover:border-red-300 text-sm font-medium transition-colors"
+                        className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-red-200 text-red-400 hover:bg-red-50 hover:text-red-600 hover:border-red-300 text-sm font-medium transition-colors"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                         إزالة
