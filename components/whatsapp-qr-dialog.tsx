@@ -142,6 +142,7 @@ export function WhatsAppQrDialog({ open, onOpenChange, initialStatus }: WhatsApp
   const [isLoadingStatus, setIsLoadingStatus] = useState(false)
   const [imageFailed, setImageFailed] = useState(false)
   const [isDisconnecting, setIsDisconnecting] = useState(false)
+  const [isRefreshingQr, setIsRefreshingQr] = useState(false)
   const [qrImageVersion, setQrImageVersion] = useState(0)
 
   const statusUi = useMemo(() => getStatusUi(status), [status])
@@ -229,6 +230,36 @@ export function WhatsAppQrDialog({ open, onOpenChange, initialStatus }: WhatsApp
     }
   }, [open])
 
+  const handleRefreshQr = async () => {
+    try {
+      setIsRefreshingQr(true)
+      const response = await fetch("/api/whatsapp/disconnect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
+
+      const data = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(data?.error || "تعذر تحديث الباركود")
+      }
+
+      setStatus((current) => ({
+        ...current,
+        status: "fetching_qr",
+        ready: false,
+        authenticated: false,
+        qrAvailable: false,
+        qrImageUrl: null,
+      }))
+      setImageFailed(false)
+      await fetchStatus({ silent: true })
+    } catch (error) {
+      await alertDialog(error instanceof Error ? error.message : "تعذر تحديث الباركود حالياً", "خطأ")
+    } finally {
+      setIsRefreshingQr(false)
+    }
+  }
+
   const handleDisconnect = async () => {
     const confirmed = await confirmDialog({
       title: "إلغاء ربط واتساب",
@@ -290,12 +321,12 @@ export function WhatsAppQrDialog({ open, onOpenChange, initialStatus }: WhatsApp
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => void fetchStatus()}
-                    disabled={isLoadingStatus}
+                    onClick={handleRefreshQr}
+                    disabled={isLoadingStatus || isRefreshingQr}
                     className="h-10 rounded-2xl border-[#d7e3f2] bg-white px-3 text-sm font-black text-[#3453a7] hover:bg-[#f8fbff]"
                   >
-                    <RefreshCw className={`me-1.5 h-4 w-4 ${isLoadingStatus ? "animate-spin" : ""}`} />
-                    تحديث
+                    <RefreshCw className={`me-1.5 h-4 w-4 ${isLoadingStatus || isRefreshingQr ? "animate-spin" : ""}`} />
+                    {isRefreshingQr ? "جاري التحديث..." : "تحديث"}
                   </Button>
                 ) : null}
                 {canDisconnect ? (

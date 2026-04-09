@@ -161,6 +161,7 @@ export default function WhatsAppQrPage() {
   const [isLoadingStatus, setIsLoadingStatus] = useState(true)
   const [imageFailed, setImageFailed] = useState(false)
   const [isDisconnecting, setIsDisconnecting] = useState(false)
+  const [isRefreshingQr, setIsRefreshingQr] = useState(false)
   const [qrImageVersion, setQrImageVersion] = useState(0)
   const statusUi = getStatusUi(status)
   const canDisconnect = status.ready && status.authenticated && status.status === "connected" && !isDisconnecting
@@ -239,6 +240,40 @@ export default function WhatsAppQrPage() {
     }
   }, [])
 
+  const handleRefreshQr = async () => {
+    try {
+      setIsRefreshingQr(true)
+
+      const response = await fetch("/api/whatsapp/disconnect", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+
+      const data = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(data?.error || "تعذر تحديث الباركود")
+      }
+
+      setStatus((current) => ({
+        ...current,
+        status: "fetching_qr",
+        ready: false,
+        authenticated: false,
+        qrAvailable: false,
+        qrImageUrl: null,
+      }))
+
+      setImageFailed(false)
+      await fetchStatus({ silent: true })
+    } catch (error) {
+      await alertDialog(error instanceof Error ? error.message : "تعذر تحديث الباركود حالياً", "خطأ")
+    } finally {
+      setIsRefreshingQr(false)
+    }
+  }
+
   const handleDisconnect = async () => {
     const confirmed = await confirmDialog({
       title: "إلغاء ربط واتساب",
@@ -312,13 +347,13 @@ export default function WhatsAppQrPage() {
               {!status.ready ? (
                 <Button
                   type="button"
-                  onClick={() => void fetchStatus()}
-                  disabled={isLoadingStatus}
+                  onClick={handleRefreshQr}
+                  disabled={isLoadingStatus || isRefreshingQr}
                   variant="outline"
                   className="h-11 rounded-2xl border-[#d7e3f2] bg-white px-5 text-sm font-black text-[#3453a7] hover:bg-[#f8fbff] disabled:opacity-60"
                 >
-                  <RefreshCw className={`me-2 h-4 w-4 ${isLoadingStatus ? "animate-spin" : ""}`} />
-                  تحديث الباركود
+                  <RefreshCw className={`me-2 h-4 w-4 ${isLoadingStatus || isRefreshingQr ? "animate-spin" : ""}`} />
+                  {isRefreshingQr ? "جاري تحديث الباركود..." : "تحديث الباركود"}
                 </Button>
               ) : null}
               {canDisconnect ? (
