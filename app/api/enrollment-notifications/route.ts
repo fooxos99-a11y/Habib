@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireRoles } from "@/lib/auth/guards"
 import { createClient } from "@/lib/supabase/server"
-import { enqueueWhatsAppMessage } from "@/lib/whatsapp-notification-templates"
+import { enqueueWhatsAppMessage } from "@/lib/whatsapp-queue"
 
 function getTodayDate() {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date())

@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
 
 export async function GET() {
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from('guess_image_stages')
     .select('*')
@@ -19,6 +22,7 @@ export async function GET() {
 
 // إضافة مرحلة جديدة
 export async function POST(req: Request) {
+  const supabase = getSupabase();
   const { name } = await req.json();
   if (!name) return NextResponse.json({ error: 'الاسم مطلوب' }, { status: 400 });
   const { data, error } = await supabase
@@ -33,6 +37,7 @@ export async function POST(req: Request) {
 
 // حذف مرحلة
 export async function DELETE(req: Request) {
+  const supabase = getSupabase();
   const { searchParams } = new URL(req.url);
   const id = searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'المعرف مطلوب' }, { status: 400 });

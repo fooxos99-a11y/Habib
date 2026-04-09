@@ -10,7 +10,8 @@ import { insertNotificationsAndSendPush } from "@/lib/push-notifications"
 import { getSaudiDateString } from "@/lib/saudi-time"
 import { getContiguousCompletedJuzRange, getJuzBounds, getNormalizedCompletedJuzs, getPendingMasteryJuzs, getStoredMemorizedRanges, hasScatteredCompletedJuzs, subtractMemorizedRangeFromRanges } from "@/lib/quran-data"
 import { getOrCreateActiveSemester, isMissingSemestersTable, isNoActiveSemesterError } from "@/lib/semesters"
-import { buildExamAppNotificationMessage, enqueueWhatsAppMessage, fillExamWhatsAppTemplate, getExamWhatsAppTemplates } from "@/lib/whatsapp-notification-templates"
+import { buildExamAppNotificationMessage, fillExamWhatsAppTemplate, getExamWhatsAppTemplates } from "@/lib/whatsapp-notification-templates"
+import { enqueueWhatsAppMessage } from "@/lib/whatsapp-queue"
 
 const ADVANCING_MEMORIZATION_LEVELS = ["excellent", "good", "very_good"]
 

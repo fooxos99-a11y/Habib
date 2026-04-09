@@ -1,8 +1,24 @@
-import { createAdminClient } from "@/lib/supabase/admin"
-import { normalizeWhatsAppPhoneNumber } from "@/lib/phone-number"
-import { isWhatsAppWorkerReady, readWhatsAppWorkerStatus } from "@/lib/whatsapp-worker-status"
+export type AbsenceNotificationTemplates = Record<string, string>
 
-import { normalizeAbsenceNotificationTemplates, type AbsenceNotificationTemplates } from "@/lib/absence-notifications"
+function normalizeAbsenceNotificationTemplates(value: unknown): AbsenceNotificationTemplates {
+  const candidate = value && typeof value === "object" ? value as Record<string, unknown> : {}
+  const normalized: AbsenceNotificationTemplates = {}
+
+  for (const [rawThreshold, rawMessage] of Object.entries(candidate)) {
+    const threshold = Number(rawThreshold)
+    if (!Number.isInteger(threshold) || threshold < 1) {
+      continue
+    }
+
+    if (typeof rawMessage !== "string" || !rawMessage.trim()) {
+      continue
+    }
+
+    normalized[String(threshold)] = rawMessage.trim()
+  }
+
+  return normalized
+}
 
 export const EXAM_WHATSAPP_SETTINGS_ID = "exam_whatsapp_notifications"
 export const ABSENCE_WHATSAPP_SETTINGS_ID = "absence_whatsapp_notifications"
@@ -182,77 +198,3 @@ export function fillAbsenceWhatsAppTemplate(template: string, params: {
     .replaceAll("{halaqah}", params.halaqah || "")
 }
 
-export async function enqueueWhatsAppMessage(supabase: SupabaseLike, params: {
-  phoneNumber?: string | null
-  message?: string | null
-  userId?: string | null
-  dedupeDate?: string | null
-}) {
-  if (!params.phoneNumber || !params.message?.trim()) {
-    return { queued: false, reason: "missing-data" as const }
-  }
-
-  let normalizedPhone: string
-  try {
-    normalizedPhone = normalizeWhatsAppPhoneNumber(params.phoneNumber)
-  } catch {
-    return { queued: false, reason: "invalid-phone" as const }
-  }
-
-  const trimmedMessage = params.message.trim()
-  const adminSupabase = createAdminClient()
-  const workerStatus = await readWhatsAppWorkerStatus()
-
-  if (!isWhatsAppWorkerReady(workerStatus)) {
-    return { queued: false, reason: "whatsapp-not-ready" as const }
-  }
-
-  if (params.dedupeDate) {
-    const { count, error } = await adminSupabase
-      .from("whatsapp_messages")
-      .select("id", { count: "exact", head: true })
-      .eq("phone_number", normalizedPhone)
-      .eq("message_text", trimmedMessage)
-      .gte("created_at", `${params.dedupeDate}T00:00:00`)
-      .lte("created_at", `${params.dedupeDate}T23:59:59.999`)
-
-    if (error && error.code !== "42P01") {
-      throw error
-    }
-
-    if ((count || 0) > 0) {
-      return { queued: false, reason: "duplicate" as const }
-    }
-  }
-
-  const id = crypto.randomUUID()
-  const { error: queueError } = await adminSupabase
-    .from("whatsapp_queue")
-    .insert({
-      id,
-      phone_number: normalizedPhone,
-      message: trimmedMessage,
-      status: "pending",
-    })
-
-  if (queueError) {
-    throw queueError
-  }
-
-  const { error: historyError } = await adminSupabase
-    .from("whatsapp_messages")
-    .insert({
-      id,
-      phone_number: normalizedPhone,
-      message_text: trimmedMessage,
-      status: "pending",
-      sent_by: params.userId || null,
-      sent_at: null,
-    })
-
-  if (historyError && historyError.code !== "42P01") {
-    throw historyError
-  }
-
-  return { queued: true, id }
-}

@@ -7,7 +7,7 @@ import {
   fillAttendanceSaveNotificationTemplate,
   normalizeAttendanceSaveNotificationTemplates,
 } from "@/lib/attendance-save-notification-templates"
-import { enqueueWhatsAppMessage } from "@/lib/whatsapp-notification-templates"
+import { enqueueWhatsAppMessage } from "@/lib/whatsapp-queue"
 import { translateAttendanceStatus, type EvaluationLevelValue } from "@/lib/student-attendance"
 
 type SupabaseLike = {

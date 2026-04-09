@@ -1,4 +1,4 @@
-import { enqueueWhatsAppMessage, fillAbsenceWhatsAppTemplate, getAbsenceWhatsAppTemplates } from "@/lib/whatsapp-notification-templates"
+import { fillAbsenceWhatsAppTemplate, getAbsenceWhatsAppTemplates } from "@/lib/whatsapp-notification-templates"
 
 export type AbsenceNotificationTemplates = Record<string, string>
 
@@ -169,6 +169,7 @@ export async function syncAbsenceNotification(params: {
   const whatsappTemplate = whatsappTemplates[String(absenceCount)]
 
   if (!params.skipWhatsApp && whatsappTemplate?.trim() && studentData.guardian_phone) {
+    const { enqueueWhatsAppMessage } = await import("@/lib/whatsapp-queue")
     const whatsappMessage = fillAbsenceWhatsAppTemplate(whatsappTemplate, {
       studentName: studentData.name || "الطالب",
       absenceCount,

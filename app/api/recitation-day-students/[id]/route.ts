@@ -4,7 +4,7 @@ import { requireRoles } from "@/lib/auth/guards"
 import { insertNotificationsAndSendPush } from "@/lib/push-notifications"
 import { getSaudiDateString } from "@/lib/saudi-time"
 import { getSiteSetting } from "@/lib/site-settings"
-import { enqueueWhatsAppMessage } from "@/lib/whatsapp-notification-templates"
+import { enqueueWhatsAppMessage } from "@/lib/whatsapp-queue"
 import {
   calculateRecitationDayPortionGrade,
   DEFAULT_RECITATION_DAY_GRADING_SETTINGS_VALUE,

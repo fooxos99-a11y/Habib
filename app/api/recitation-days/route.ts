@@ -9,7 +9,7 @@ import {
   shouldIncludeArchivedRecitationStudent,
 } from "@/lib/recitation-days"
 import { getSiteSetting } from "@/lib/site-settings"
-import { enqueueWhatsAppMessage } from "@/lib/whatsapp-notification-templates"
+import { enqueueWhatsAppMessage } from "@/lib/whatsapp-queue"
 import { isWhatsAppWorkerReady, readWhatsAppWorkerStatus } from "@/lib/whatsapp-worker-status"
 import {
   DEFAULT_RECITATION_DAY_LIFECYCLE_NOTIFICATION_TEMPLATES,
