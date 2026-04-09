@@ -112,6 +112,14 @@ function getStatusUi(status: WhatsAppStatusResponse) {
         description: "الجلسة انقطعت. انتظر باركودًا جديدًا أو أعد الربط.",
       }
     case "starting":
+      if (!status.authenticated && !status.qrAvailable) {
+        return {
+          label: "لم يتم الربط",
+          tone: "bg-slate-100 text-slate-700 border-slate-200",
+          description: "يتم تجهيز الجلسة الآن، وسيظهر الباركود عند جاهزيته. إذا استمرت هذه الحالة فحدّث الباركود.",
+        }
+      }
+
       return {
         label: "جاري التشغيل",
         tone: "bg-slate-100 text-slate-700 border-slate-200",

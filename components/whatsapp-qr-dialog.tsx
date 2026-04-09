@@ -109,6 +109,14 @@ function getStatusUi(status: WhatsAppStatusResponse) {
         tone: "bg-slate-100 text-slate-700 border-slate-200",
       }
     case "starting":
+      if (!status.authenticated && !status.qrAvailable) {
+        return {
+          label: "بانتظار الباركود",
+          description: "يتم تجهيز الجلسة الآن، وسيظهر الباركود عند جاهزيته. إذا استمرت هذه الحالة فحدّث الباركود.",
+          tone: "bg-slate-100 text-slate-700 border-slate-200",
+        }
+      }
+
       return {
         label: "جاري التشغيل",
         description: "عامل واتساب بدأ التشغيل ويجهز الجلسة.",
