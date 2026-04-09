@@ -16,7 +16,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Plus, Trash2, ArrowRight, Users, BookOpen, Eye, UserX, Info } from "lucide-react"
+import { Plus, Trash2, ArrowRight, Users, BookOpen, Eye, UserX, Info, Edit2 } from "lucide-react"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { useAlertDialog } from "@/hooks/use-confirm-dialog"
 import { TeacherAttendanceModal } from "@/components/teacher-attendance-modal"
@@ -42,7 +42,10 @@ export default function CircleManagement() {
 
   const [isLoading, setIsLoading] = useState(true)
   const [newCircleName, setNewCircleName] = useState("")
+  const [editingCircle, setEditingCircle] = useState<Circle | null>(null)
+  const [editedCircleName, setEditedCircleName] = useState("")
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [selectedCircle, setSelectedCircle] = useState<Circle | null>(null)
   const [isStudentsDialogOpen, setIsStudentsDialogOpen] = useState(false)
   const [circleStudents, setCircleStudents] = useState<Student[]>([])
@@ -83,18 +86,61 @@ export default function CircleManagement() {
           body: JSON.stringify({ name: newCircleName }),
         })
 
+        const data = await response.json().catch(() => null)
+
         if (response.ok) {
           localStorage.removeItem("circlesCache")
           localStorage.removeItem("circlesCacheTime")
           setNewCircleName("")
           setIsAddDialogOpen(false)
-          await showAlert(`تم إضافة الحلقة ${newCircleName} بنجاح. سيتم إنشاؤها عند إضافة أول طالب.`, "نجاح")
+          await showAlert(`تم إضافة حلقة ${newCircleName} بنجاح. سيتم إنشاؤها عند إضافة أول طالب.`, "نجاح")
           fetchCircles()
+        } else {
+          await showAlert(data?.error || "تعذر إضافة الحلقة", "خطأ")
         }
       } catch (error) {
         console.error("[v0] Error adding circle:", error)
         await showAlert("حدث خطأ أثناء إضافة الحلقة", "خطأ")
       }
+    }
+  }
+
+  const handleOpenEditCircle = (circle: Circle) => {
+    setEditingCircle(circle)
+    setEditedCircleName(circle.name)
+    setIsEditDialogOpen(true)
+  }
+
+  const handleSaveCircleEdit = async () => {
+    if (!editingCircle || !editedCircleName.trim()) {
+      await showAlert("اسم الحلقة مطلوب", "تنبيه")
+      return
+    }
+
+    try {
+      const response = await fetch("/api/circles", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ current_name: editingCircle.name, new_name: editedCircleName }),
+      })
+
+      const data = await response.json().catch(() => null)
+      if (!response.ok || !data?.success) {
+        await showAlert(data?.error || "تعذر تعديل الحلقة", "خطأ")
+        return
+      }
+
+      localStorage.removeItem("circlesCache")
+      localStorage.removeItem("circlesCacheTime")
+      window.dispatchEvent(new Event("circlesChanged"))
+      setIsEditDialogOpen(false)
+      setEditingCircle(null)
+      setEditedCircleName("")
+      await showAlert(`تم تعديل اسم الحلقة إلى ${editedCircleName} بنجاح`, "نجاح")
+      fetchCircles()
+    } catch (error) {
+      console.error("[v0] Error editing circle:", error)
+      await showAlert("حدث خطأ أثناء تعديل الحلقة", "خطأ")
     }
   }
 
@@ -211,7 +257,7 @@ export default function CircleManagement() {
 
             <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
               <DialogTrigger asChild>
-                <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-[#3453a7] bg-[#3453a7] hover:bg-[#28448e] text-white hover:text-white text-sm font-semibold transition-colors">
+                <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-[#3453a7] bg-[#3453a7] hover:bg-[#28448e] !text-[#ffffff] hover:!text-[#ffffff] text-sm font-semibold transition-colors">
                   <Plus className="w-4 h-4" />
                   إضافة
                 </button>
@@ -235,6 +281,30 @@ export default function CircleManagement() {
                 <div className="flex justify-end gap-3">
                   <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} className="border-[#3453a7]/50 text-neutral-600">إلغاء</Button>
                   <Button onClick={handleAddCircle} className="border border-[#3453a7]/50 bg-[#3453a7]/10 hover:bg-[#3453a7]/20 text-[#4f73d1] hover:text-[#3453a7]">حفظ</Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+              <DialogContent className="sm:max-w-[480px]">
+                <DialogHeader>
+                  <DialogTitle className="text-xl text-[#1a2332]">تعديل اسم الحلقة</DialogTitle>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="editCircleName" className="text-sm font-semibold text-[#1a2332]">اسم الحلقة</Label>
+                    <Input
+                      id="editCircleName"
+                      value={editedCircleName}
+                      onChange={(e) => setEditedCircleName(e.target.value)}
+                      placeholder="أدخل اسم الحلقة"
+                      onKeyDown={(e) => e.key === "Enter" && handleSaveCircleEdit()}
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-3">
+                  <Button variant="outline" onClick={() => setIsEditDialogOpen(false)} className="border-[#3453a7]/50 text-neutral-600">إلغاء</Button>
+                  <Button onClick={handleSaveCircleEdit} className="border border-[#3453a7]/50 bg-[#3453a7]/10 hover:bg-[#3453a7]/20 text-[#4f73d1] hover:text-[#3453a7]">حفظ</Button>
                 </div>
               </DialogContent>
             </Dialog>
@@ -269,6 +339,13 @@ export default function CircleManagement() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleOpenEditCircle(circle)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#d8e4fb] text-[#4f73d1] hover:bg-[#3453a7]/10 hover:text-[#3453a7] text-sm font-medium transition-colors"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                        تعديل
+                      </button>
                       <button
                         onClick={() => handleViewCircle(circle)}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#3453a7]/50 text-[#4f73d1] hover:bg-[#3453a7]/10 hover:text-[#3453a7] text-sm font-medium transition-colors"

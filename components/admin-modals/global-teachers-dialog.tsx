@@ -47,6 +47,7 @@ export function GlobalTeachersDialog() {
   const [newTeacherName, setNewTeacherName] = useState("")
   const [newTeacherIdNumber, setNewTeacherIdNumber] = useState("")
   const [newTeacherAccountNumber, setNewTeacherAccountNumber] = useState("")
+  const [newTeacherPhoneNumber, setNewTeacherPhoneNumber] = useState("")
   const [selectedHalaqah, setSelectedHalaqah] = useState("")
   const [newTeacherRole, setNewTeacherRole] = useState<"teacher" | "deputy_teacher">("teacher")
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
@@ -130,6 +131,7 @@ export function GlobalTeachersDialog() {
             name: newTeacherName,
             id_number: newTeacherIdNumber,
             account_number: Number.parseInt(newTeacherAccountNumber),
+            phone_number: newTeacherPhoneNumber,
             halaqah: selectedHalaqah,
             role: newTeacherRole,
           }),
@@ -145,6 +147,7 @@ export function GlobalTeachersDialog() {
           setNewTeacherName("")
           setNewTeacherIdNumber("")
           setNewTeacherAccountNumber("")
+          setNewTeacherPhoneNumber("")
           setSelectedHalaqah("")
           setNewTeacherRole("teacher")
           setIsAddDialogOpen(false)
@@ -360,6 +363,10 @@ export function GlobalTeachersDialog() {
             <div className="space-y-2">
               <Label htmlFor="teacherIdNumber" className="text-sm font-semibold text-[#1a2332]">رقم الهوية</Label>
               <Input id="teacherIdNumber" value={newTeacherIdNumber} onChange={(e) => setNewTeacherIdNumber(e.target.value)} placeholder="أدخل رقم الهوية" dir="ltr" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="teacherPhoneNumber" className="text-sm font-semibold text-[#1a2332]">رقم الجوال</Label>
+              <Input id="teacherPhoneNumber" value={newTeacherPhoneNumber} onChange={(e) => setNewTeacherPhoneNumber(e.target.value)} placeholder="أدخل رقم الجوال" dir="ltr" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="halaqah" className="text-sm font-semibold text-[#1a2332]">اختر الحلقة</Label>

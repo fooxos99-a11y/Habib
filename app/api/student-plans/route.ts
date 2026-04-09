@@ -1080,7 +1080,7 @@ export async function POST(request: Request) {
       weekly_muraajaa_end_day: normalizedMuraajaaMode === "weekly_distributed" ? Number(weekly_muraajaa_end_day) : null,
     }
 
-    const primaryExistingPlanId = hasSignificantPlanChange ? null : (latestExistingPlan?.id || null)
+    const primaryExistingPlanId = latestExistingPlan?.id || null
     const query = primaryExistingPlanId
       ? supabase
           .from("student_plans")
@@ -1099,7 +1099,7 @@ export async function POST(request: Request) {
     const oldPlanIds = (existingPlans || [])
       .map((plan) => plan.id)
       .filter((planId) => Boolean(planId) && planId !== primaryExistingPlanId)
-    if (!hasSignificantPlanChange && oldPlanIds.length > 0) {
+    if (oldPlanIds.length > 0) {
       const { error: cleanupError } = await supabase
         .from("student_plans")
         .delete()

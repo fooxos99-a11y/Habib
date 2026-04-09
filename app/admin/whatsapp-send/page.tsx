@@ -9,9 +9,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { useWhatsAppStatus } from "@/hooks/use-whatsapp-status"
-import { MessageCircle, Send, Users, CheckCircle2, XCircle, Phone } from "lucide-react"
+import { MessageCircle, Send, Users, CheckCircle2, XCircle, Phone, CircleAlert } from "lucide-react"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
 import { SiteLoader } from "@/components/ui/site-loader"
 import { formatGuardianPhoneForDisplay } from "@/lib/phone-number"
@@ -21,6 +23,30 @@ interface Student {
   name: string
   guardian_phone: string
   account_number: number
+  halaqah?: string | null
+}
+
+const TEMPLATE_VARIABLES = [
+  { token: "{name}", label: "اسم الطالب", sample: "أحمد محمد" },
+  { token: "{halaqah}", label: "اسم الحلقة", sample: "حلقة أبي بن كعب" },
+  { token: "{account_number}", label: "رقم الحساب", sample: "10234" },
+  { token: "{guardian_phone}", label: "رقم ولي الأمر", sample: "0551234567" },
+  { token: "{date}", label: "تاريخ اليوم", sample: "09/04/2026" },
+] as const
+
+function resolveMessageTemplate(template: string, student: Student) {
+  const replacements: Record<string, string> = {
+    "{name}": student.name || "",
+    "{halaqah}": (student.halaqah || "").trim(),
+    "{account_number}": student.account_number ? String(student.account_number) : "",
+    "{guardian_phone}": formatGuardianPhoneForDisplay(student.guardian_phone),
+    "{date}": new Intl.DateTimeFormat("ar-SA").format(new Date()),
+  }
+
+  return Object.entries(replacements).reduce(
+    (result, [token, value]) => result.replaceAll(token, value),
+    template,
+  )
 }
 
 export default function WhatsAppSendPage() {
@@ -83,6 +109,7 @@ export default function WhatsAppSendPage() {
   const [selectedStudents, setSelectedStudents] = useState<string[]>([])
   const [message, setMessage] = useState("")
   const [searchTerm, setSearchTerm] = useState("")
+  const [selectedHalaqah, setSelectedHalaqah] = useState("all")
   const [isSending, setIsSending] = useState(false)
   const [sendResults, setSendResults] = useState<{ success: number; failed: number } | null>(null)
   const router = useRouter()
@@ -103,19 +130,27 @@ export default function WhatsAppSendPage() {
   }, [router])
 
   useEffect(() => {
-    // تصفية الطلاب حسب البحث
-    if (searchTerm) {
-      const filtered = students.filter(
-        (student) =>
-          student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          student.guardian_phone?.includes(searchTerm) ||
-          student.account_number.toString().includes(searchTerm)
+    let nextStudents = [...students]
+
+    if (selectedHalaqah !== "all") {
+      nextStudents = nextStudents.filter(
+        (student) => (student.halaqah || "").trim() === selectedHalaqah,
       )
-      setFilteredStudents(filtered)
-    } else {
-      setFilteredStudents(students)
     }
-  }, [searchTerm, students])
+
+    if (searchTerm.trim()) {
+      const normalizedSearch = searchTerm.toLowerCase()
+      nextStudents = nextStudents.filter(
+        (student) =>
+          student.name.toLowerCase().includes(normalizedSearch) ||
+          student.guardian_phone?.includes(searchTerm) ||
+          student.account_number.toString().includes(searchTerm) ||
+          (student.halaqah || "").toLowerCase().includes(normalizedSearch),
+      )
+    }
+
+    setFilteredStudents(nextStudents)
+  }, [searchTerm, selectedHalaqah, students])
 
   const fetchStudents = async () => {
     try {
@@ -143,17 +178,37 @@ export default function WhatsAppSendPage() {
   }
 
   const handleSelectAll = () => {
-    if (selectedStudents.length === filteredStudents.length) {
-      setSelectedStudents([])
-    } else {
-      setSelectedStudents(filteredStudents.map((s) => s.id))
+    const filteredIds = filteredStudents.map((student) => student.id)
+    const areAllFilteredSelected = filteredIds.length > 0 && filteredIds.every((id) => selectedStudents.includes(id))
+
+    if (areAllFilteredSelected) {
+      setSelectedStudents((prev) => prev.filter((id) => !filteredIds.includes(id)))
+      return
     }
+
+    setSelectedStudents((prev) => Array.from(new Set([...prev, ...filteredIds])))
   }
 
   const handleSelectStudent = (studentId: string) => {
     setSelectedStudents((prev) =>
       prev.includes(studentId) ? prev.filter((id) => id !== studentId) : [...prev, studentId]
     )
+  }
+
+  const insertTemplateVariable = (token: string) => {
+    setMessage((prev) => {
+      const trimmedPrev = prev.trimEnd()
+
+      if (!trimmedPrev) {
+        return token
+      }
+
+      const separator = trimmedPrev.endsWith("{") || trimmedPrev.endsWith("\n") || trimmedPrev.endsWith(" ")
+        ? ""
+        : " "
+
+      return `${prev}${separator}${token}`
+    })
   }
 
   const handleSendMessages = async () => {
@@ -197,6 +252,7 @@ export default function WhatsAppSendPage() {
           message,
           recipients: selectedStudentsData.map((student) => ({
             phoneNumber: student.guardian_phone,
+            message: resolveMessageTemplate(message, student),
             userId: localStorage.getItem("userId") || undefined,
           })),
         }),
@@ -248,6 +304,18 @@ export default function WhatsAppSendPage() {
 
     if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><SiteLoader size="md" /></div>);
 
+  const halaqahOptions = Array.from(
+    new Set(
+      students
+        .map((student) => (student.halaqah || "").trim())
+        .filter(Boolean),
+    ),
+  ).sort((first, second) => first.localeCompare(second, "ar"))
+
+  const allFilteredSelected = filteredStudents.length > 0 && filteredStudents.every((student) => selectedStudents.includes(student.id))
+  const previewStudent = students.find((student) => selectedStudents.includes(student.id)) || filteredStudents[0] || null
+  const previewMessage = previewStudent && message.trim() ? resolveMessageTemplate(message, previewStudent) : ""
+
   return (
     <div className="min-h-screen flex flex-col bg-white">
       <Header />
@@ -290,7 +358,39 @@ export default function WhatsAppSendPage() {
               <div className="lg:col-span-1">
                 <Card className="border-2 border-[#3453a7]/20">
                   <CardHeader>
-                    <CardTitle className="text-[#1a2332]">كتابة الرسالة</CardTitle>
+                    <div className="flex items-center justify-between gap-3">
+                      <CardTitle className="text-[#1a2332]">كتابة الرسالة</CardTitle>
+                      <HoverCard>
+                        <HoverCardTrigger asChild>
+                          <button
+                            type="button"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#3453a7]/20 bg-[#3453a7]/5 text-[#3453a7] transition hover:bg-[#3453a7]/10"
+                            aria-label="عرض متغيرات الرسالة"
+                          >
+                            <CircleAlert className="h-4 w-4" />
+                          </button>
+                        </HoverCardTrigger>
+                        <HoverCardContent align="end" className="w-80 border border-[#3453a7]/15 bg-white text-right shadow-xl">
+                          <div className="space-y-3">
+                            <div>
+                              <p className="text-sm font-bold text-[#1a2332]">المتغيرات المتاحة</p>
+                              <p className="mt-1 text-xs text-gray-500">تُستبدل تلقائياً لكل طالب عند الإرسال.</p>
+                            </div>
+                            <div className="space-y-2">
+                              {TEMPLATE_VARIABLES.map((variable) => (
+                                <div key={variable.token} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <span className="text-xs font-bold text-[#3453a7]">{variable.token}</span>
+                                    <span className="text-xs text-[#1a2332]">{variable.label}</span>
+                                  </div>
+                                  <p className="mt-1 text-xs text-gray-500">مثال: {variable.sample}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </HoverCardContent>
+                      </HoverCard>
+                    </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
@@ -336,14 +436,37 @@ export default function WhatsAppSendPage() {
                       </div>
                       <Textarea
                         id="message"
-                        placeholder="اكتب رسالتك هنا..."
+                        placeholder="اكتب رسالتك هنا... ويمكنك استخدام {name} و {halaqah} وغيرها"
                         value={message}
                         onChange={(e) => setMessage(e.target.value)}
                         rows={8}
                         className="resize-none"
                       />
+                      <div className="flex flex-wrap gap-2">
+                        {TEMPLATE_VARIABLES.map((variable) => (
+                          <Button
+                            key={variable.token}
+                            type="button"
+                            variant="outline"
+                            className="h-8 rounded-full border-[#3453a7]/25 px-3 text-xs text-[#3453a7] hover:bg-[#3453a7]/5"
+                            onClick={() => insertTemplateVariable(variable.token)}
+                          >
+                            {variable.token}
+                          </Button>
+                        ))}
+                      </div>
                       <p className="text-xs text-gray-500">{message.length} حرف</p>
                     </div>
+
+                    {previewMessage ? (
+                      <div className="rounded-2xl border border-[#3453a7]/15 bg-[#f8fbff] p-4 text-right">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm font-bold text-[#1a2332]">معاينة الرسالة</p>
+                          <p className="text-xs text-gray-500">للطالب: {previewStudent?.name}</p>
+                        </div>
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-gray-700">{previewMessage}</p>
+                      </div>
+                    ) : null}
 
                     {sendResults && (
                       <div className="space-y-2 rounded-lg bg-white p-4">
@@ -385,27 +508,40 @@ export default function WhatsAppSendPage() {
                 <Card className="border-2 border-[#3453a7]/20">
                   <CardHeader>
                     <CardTitle className="text-[#1a2332]">اختيار الطلاب</CardTitle>
-                    <CardDescription>حدد أولياء الأمور الذين تريد إرسال الرسالة لهم</CardDescription>
+                    <CardDescription>حدد أولياء الأمور الذين تريد إرسال الرسالة لهم، ويمكنك التصفية حسب الحلقة</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {/* Search & Select All */}
-                    <div className="flex flex-col md:flex-row gap-3">
-                      <div className="flex-1">
+                    <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_220px_auto] gap-3">
+                      <div>
                         <Input
                           type="text"
-                          placeholder="بحث بالاسم أو رقم الهاتف..."
+                          placeholder="بحث بالاسم أو رقم الهاتف أو الحلقة..."
                           value={searchTerm}
                           onChange={(e) => setSearchTerm(e.target.value)}
                         />
                       </div>
+                      <Select value={selectedHalaqah} onValueChange={setSelectedHalaqah}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="كل الحلقات" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">كل الحلقات</SelectItem>
+                          {halaqahOptions.map((halaqah) => (
+                            <SelectItem key={halaqah} value={halaqah}>
+                              {halaqah}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <Button
                         onClick={handleSelectAll}
                         variant="outline"
                         className="text-sm h-9 rounded-lg border-[#3453a7]/50 text-neutral-600 whitespace-nowrap"
                       >
-                        {selectedStudents.length === filteredStudents.length
+                        {allFilteredSelected
                           ? "إلغاء تحديد الكل"
-                          : "تحديد الكل"}
+                          : `تحديد الظاهر (${filteredStudents.length})`}
                       </Button>
                     </div>
 
@@ -437,6 +573,9 @@ export default function WhatsAppSendPage() {
                               <p className="text-sm text-gray-600 flex items-center gap-1">
                                 <Phone className="w-3 h-3" />
                                 {formatGuardianPhoneForDisplay(student.guardian_phone)}
+                              </p>
+                              <p className="mt-1 text-xs font-semibold text-[#3453a7]">
+                                {(student.halaqah || "بدون حلقة").trim() || "بدون حلقة"}
                               </p>
                             </div>
                             <div className="text-sm text-gray-500">#{student.account_number}</div>

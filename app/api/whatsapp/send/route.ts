@@ -13,6 +13,7 @@ type QueueMessageInput = {
 type BulkQueueRecipientInput = {
   phoneNumber?: string | null
   userId?: string | null
+  message?: string | null
 }
 
 /**
@@ -24,17 +25,29 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
     const { phoneNumber, message, userId, recipients } = body
+    const normalizedMessage = typeof message === "string" ? message.trim() : ""
 
-    if (!message || !String(message).trim()) {
+    if (!normalizedMessage && !Array.isArray(recipients)) {
       return NextResponse.json(
-        { error: "رقم الهاتف والرسالة مطلوبان" },
+        { error: "نص الرسالة مطلوب" },
         { status: 400 }
       )
     }
 
     if (Array.isArray(recipients)) {
+      const hasAnyMessage = recipients.some(
+        (recipient) => typeof recipient?.message === "string" && recipient.message.trim(),
+      )
+
+      if (!normalizedMessage && !hasAnyMessage) {
+        return NextResponse.json(
+          { error: "نص الرسالة مطلوب" },
+          { status: 400 }
+        )
+      }
+
       const bulkResult = await enqueueMessagesBulk({
-        message: String(message).trim(),
+        message: normalizedMessage,
         recipients,
       })
 
@@ -59,7 +72,7 @@ export async function POST(request: Request) {
     const queuedMessage = await enqueueMessage({
       id: crypto.randomUUID(),
       phoneNumber: normalizeWhatsAppPhoneNumber(phoneNumber),
-      message: message.trim(),
+      message: normalizedMessage,
       userId,
     })
 
@@ -140,6 +153,14 @@ async function enqueueMessagesBulk(params: {
       continue
     }
 
+    const resolvedMessage = typeof recipient.message === "string" && recipient.message.trim()
+      ? recipient.message.trim()
+      : params.message
+
+    if (!resolvedMessage) {
+      continue
+    }
+
     let normalizedPhone
     try {
       normalizedPhone = normalizeWhatsAppPhoneNumber(String(recipient.phoneNumber))
@@ -152,13 +173,13 @@ async function enqueueMessagesBulk(params: {
     queueRows.push({
       id,
       phone_number: normalizedPhone,
-      message: params.message,
+      message: resolvedMessage,
       status: "pending",
     })
     historyRows.push({
       id,
       phone_number: normalizedPhone,
-      message_text: params.message,
+      message_text: resolvedMessage,
       status: "pending",
       sent_by: recipient.userId ? String(recipient.userId) : null,
       sent_at: null,

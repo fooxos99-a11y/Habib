@@ -848,10 +848,6 @@ export async function buildRecitationDayStudentsSnapshot(
     .select("id, name, account_number, halaqah, completed_juzs, memorized_ranges, memorized_start_surah, memorized_start_verse, memorized_end_surah, memorized_end_verse")
     .order("name", { ascending: true })
 
-  if (normalizedHalaqah) {
-    studentsQuery = studentsQuery.eq("halaqah", normalizedHalaqah)
-  }
-
   const [{ data: students, error: studentsError }, { data: teachers, error: teachersError }] = await Promise.all([
     studentsQuery,
     supabase
@@ -879,8 +875,11 @@ export async function buildRecitationDayStudentsSnapshot(
   }
 
   const snapshots: RecitationStudentSnapshot[] = []
+  const filteredStudents = normalizedHalaqah
+    ? (students || []).filter((student) => normalizeText(student.halaqah) === normalizeText(normalizedHalaqah))
+    : (students || [])
 
-  for (const student of students || []) {
+  for (const student of filteredStudents) {
     const planProgress = activeSemesterId
       ? await getStudentActivePlanProgress(supabase, student.id, activeSemesterId)
       : null

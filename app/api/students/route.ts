@@ -466,6 +466,7 @@ export async function PATCH(request: Request) {
     const body = await request.json()
     const {
       id,
+      name,
       phone_number,
       id_number,
       account_number,
@@ -600,6 +601,15 @@ export async function PATCH(request: Request) {
     }
 
     const updateData: any = {}
+
+    if (name !== undefined) {
+      const normalizedName = String(name || "").trim()
+      if (!normalizedName) {
+        return NextResponse.json({ error: "اسم الطالب مطلوب" }, { status: 400 })
+      }
+
+      updateData.name = normalizedName
+    }
     
     // Check if halaqah changed
     if (halaqah !== undefined) {
@@ -607,14 +617,14 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ error: "لا يمكنك نقل الطالب بين الحلقات" }, { status: 403 })
       }
 
-      updateData.halaqah = halaqah
+      updateData.halaqah = String(halaqah || "").trim()
       const { data: currentStudentHalaqah } = await supabase
         .from("students")
         .select("halaqah")
         .eq("id", studentId)
         .single()
       
-      if (currentStudentHalaqah && currentStudentHalaqah.halaqah !== halaqah) {
+      if (currentStudentHalaqah && currentStudentHalaqah.halaqah !== updateData.halaqah) {
         // Drop pathway progress if student moved to a different circle
         await supabase.from("pathway_level_completions").delete().eq("student_id", studentId)
       }

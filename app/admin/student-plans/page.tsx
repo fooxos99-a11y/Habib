@@ -153,6 +153,27 @@ function buildPreviousRangeDrafts(ranges: PreviousMemorizationRange[]) {
   return ranges.length > 0 ? ranges.map((range) => createPreviousRangeDraft(range)) : [createPreviousRangeDraft()];
 }
 
+function getEditablePlanPreviousRanges(plan: StudentPlan | null | undefined) {
+  if (!plan) return [] as PreviousMemorizationRange[];
+
+  const normalizedRanges = normalizePreviousMemorizationRanges(plan.previous_memorization_ranges);
+  if (normalizedRanges.length > 0) {
+    return normalizedRanges;
+  }
+
+  if (plan.prev_start_surah && plan.prev_end_surah) {
+    const endSurah = SURAHS.find((surah) => surah.number === plan.prev_end_surah);
+    return [{
+      startSurahNumber: plan.prev_start_surah,
+      startVerseNumber: plan.prev_start_verse || 1,
+      endSurahNumber: plan.prev_end_surah,
+      endVerseNumber: plan.prev_end_verse || endSurah?.verseCount || 1,
+    }];
+  }
+
+  return [] as PreviousMemorizationRange[];
+}
+
 function getDraftPreviousRanges(drafts: PreviousRangeDraft[]) {
   return drafts.flatMap((range) => {
     if (!range.startSurah || !range.endSurah || !range.endVerse) {
@@ -787,6 +808,38 @@ export default function StudentPlansPage() {
 
   const openAddDialog = (student: Student) => {
     const currentPlan = studentPlans[student.id];
+
+    if (currentPlan) {
+      const editablePreviousRanges = getEditablePlanPreviousRanges(currentPlan);
+
+      setSelectedStudent(student);
+      setStartSurah(String(currentPlan.start_surah_number));
+      setEndSurah(String(currentPlan.end_surah_number));
+      setDailyPages(String(currentPlan.daily_pages || 1));
+      setCustomDays(currentPlan.total_days ? String(currentPlan.total_days) : "");
+      setSaveMsg(null);
+      setStartOpen(false);
+      setEndOpen(false);
+      setStartVerse(currentPlan.start_verse ? String(currentPlan.start_verse) : "");
+      setEndVerse(currentPlan.end_verse ? String(currentPlan.end_verse) : "");
+      setHasPrevious(Boolean(currentPlan.has_previous || editablePreviousRanges.length > 0));
+      setIsPreviousLocked(false);
+      setPreviousRanges(buildPreviousRangeDrafts(editablePreviousRanges));
+      setRemovingPreviousRangeIds([]);
+      setMuraajaaPages(String(currentPlan.muraajaa_pages ?? 20));
+      setMuraajaaMode(currentPlan.muraajaa_mode === "weekly_distributed" ? "weekly_distributed" : "daily_fixed");
+      setRabtPages(String(currentPlan.rabt_pages ?? 10));
+      setWeeklyReviewMinDailyPages(String(currentPlan.weekly_muraajaa_min_daily_pages ?? 10));
+      setWeeklyReviewStartDay(String(currentPlan.weekly_muraajaa_start_day ?? 0));
+      setWeeklyReviewEndDay(String(currentPlan.weekly_muraajaa_end_day ?? 4));
+      setDraftWeeklyReviewMinDailyPages(String(currentPlan.weekly_muraajaa_min_daily_pages ?? 10));
+      setDraftWeeklyReviewStartDay(String(currentPlan.weekly_muraajaa_start_day ?? 0));
+      setDraftWeeklyReviewEndDay(String(currentPlan.weekly_muraajaa_end_day ?? 4));
+      setWeeklyReviewDialogOpen(false);
+      setAddDialogOpen(true);
+      return;
+    }
+
     const lockedPreviousRanges = getLockedPreviousRanges(student, currentPlan, studentCompletedDays[student.id] || 0);
     const normalizedLockedPreviousRanges = normalizePreviousMemorizationRanges(lockedPreviousRanges);
     const lockedPreviousBoundary = lockedPreviousRanges.length === 1
@@ -853,10 +906,6 @@ export default function StudentPlansPage() {
         return;
       }
 
-      if (normalizedPreviousRanges.length === 1 && !nextStartFromPrevious) {
-        setSaveMsg({ type: "error", text: "تعذر تحديد البداية الصحيحة بعد الحفظ السابق" });
-        return;
-      }
     }
 
     if (startNum === endNum && startVerse && endVerse && parseInt(startVerse) > parseInt(endVerse)) {
@@ -950,48 +999,6 @@ export default function StudentPlansPage() {
       setSaveMsg({ type: "error", text: "حدث خطأ، يرجى المحاولة مجدداً" });
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  const handleDeletePlan = async (studentId: string) => {
-    const confirmed = await confirmDialog({
-      title: "حذف الخطة",
-      description: "سيتم حذف الخطة الحالية فقط مع الإبقاء على محفوظ الطالب الحالي. هل تريد المتابعة؟",
-      confirmText: "حذف",
-      cancelText: "إلغاء",
-    })
-    if (!confirmed) return;
-
-    try {
-      const res = await fetch(`/api/student-plans?student_id=${studentId}`, {
-        method: "DELETE",
-      });
-      const data = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        throw new Error(data?.error || "فشل في حذف الخطة");
-      }
-
-      setStudentPlans((prev) => ({ ...prev, [studentId]: null }));
-      setStudentProgress((prev) => ({ ...prev, [studentId]: 0 }));
-      setStudentCompletedDays((prev) => ({ ...prev, [studentId]: 0 }));
-
-      if (selectedStudent?.id === studentId) {
-        setAddDialogOpen(false);
-        setSelectedStudent(null);
-        setStartSurah("");
-        setEndSurah("");
-        setStartVerse("");
-        setEndVerse("");
-        setHasPrevious(false);
-        setIsPreviousLocked(false);
-        setPreviousRanges([createPreviousRangeDraft()]);
-        setRemovingPreviousRangeIds([]);
-        setSaveMsg(null);
-      }
-    } catch (e: any) {
-      console.error(e);
-      toast({ title: e?.message || "فشل في حذف الخطة", variant: "destructive" });
     }
   };
 
@@ -1162,7 +1169,7 @@ export default function StudentPlansPage() {
     (selectedStudent?.memorized_start_surah && selectedStudent?.memorized_end_surah) ||
     (selectedStudent?.memorized_ranges?.length || 0) > 0,
   );
-  const shouldHidePreviousToggle = hasStoredPreviousMemorization;
+  const shouldHidePreviousToggle = hasStoredPreviousMemorization && !isEditingPlan;
   const isMasteryOnlyStudent = pendingMasteryJuzs.length > 0 && !hasStoredPreviousMemorization;
   const completedJuzSet = new Set(selectedStudent?.completed_juzs || []);
   const completedJuzBounds = (selectedStudent?.completed_juzs || [])
@@ -1189,6 +1196,26 @@ export default function StudentPlansPage() {
         range.endVerseNumber,
       )
     ));
+  };
+  const currentPlanSelectionRange = startNum && endNum
+    ? {
+        startSurahNumber: startNum,
+        startVerseNumber: startVerse ? parseInt(startVerse, 10) : 1,
+        endSurahNumber: endNum,
+        endVerseNumber: endVerse ? parseInt(endVerse, 10) : (SURAHS.find((surah) => surah.number === endNum)?.verseCount || 1),
+      }
+    : null;
+  const isAyahWithinCurrentPlanSelection = (surahNumber: number, verseNumber: number) => {
+    if (!currentPlanSelectionRange) return true;
+
+    return isAyahWithinRange(
+      surahNumber,
+      verseNumber,
+      currentPlanSelectionRange.startSurahNumber,
+      currentPlanSelectionRange.startVerseNumber,
+      currentPlanSelectionRange.endSurahNumber,
+      currentPlanSelectionRange.endVerseNumber,
+    );
   };
   const getAvailableVerseNumbers = (surahNumber: number, minVerse: number, maxVerse: number) => {
     if (maxVerse < minVerse) return [];
@@ -1235,6 +1262,7 @@ export default function StudentPlansPage() {
     const otherRanges = normalizePreviousMemorizationRanges(getDraftPreviousRanges(previousRanges.filter((item) => item.id !== range.id)));
 
     return Array.from({ length: selectedSurah.verseCount }, (_, index) => index + 1)
+      .filter((verseNumber) => isAyahWithinCurrentPlanSelection(selectedSurah.number, verseNumber))
       .filter((verseNumber) => !otherRanges.some((otherRange) => (
         isAyahWithinRange(
           selectedSurah.number,
@@ -1263,6 +1291,7 @@ export default function StudentPlansPage() {
     }
 
     return Array.from({ length: Math.max(0, maxVerse - minVerse + 1) }, (_, index) => minVerse + index)
+      .filter((verseNumber) => isAyahWithinCurrentPlanSelection(selectedSurah.number, verseNumber))
       .filter((verseNumber) => !otherRanges.some((otherRange) => (
         isAyahWithinRange(
           selectedSurah.number,
@@ -1432,53 +1461,17 @@ export default function StudentPlansPage() {
       : 0;
 
   useEffect(() => {
-    if (!hasPrevious || normalizedPreviousRanges.length !== 1 || !nextStartFromPrevious) {
+    if (isEditingPlan || !hasPrevious || normalizedPreviousRanges.length !== 1 || !nextStartFromPrevious) {
       return;
     }
 
-    if (startSurah && startVerse) {
-      const currentStartSurah = parseInt(startSurah, 10);
-      const currentStartVerse = parseInt(startVerse, 10);
-
-      if (Number.isInteger(currentStartSurah) && Number.isInteger(currentStartVerse)) {
-        const insidePreviousRange = normalizedPreviousRanges.some((range) => (
-          isAyahWithinRange(
-            currentStartSurah,
-            currentStartVerse,
-            range.startSurahNumber,
-            range.startVerseNumber,
-            range.endSurahNumber,
-            range.endVerseNumber,
-          )
-        ));
-        const previousDirection = parseInt(prevStartSurah || "0", 10) > parseInt(prevEndSurah || "0", 10) ? "desc" : "asc";
-        const allowedAfterPrevious = prevEndSurah && prevEndVerse
-          ? isStartAllowedAfterPrevious(
-            currentStartSurah,
-            currentStartVerse,
-            parseInt(prevEndSurah, 10),
-            parseInt(prevEndVerse, 10),
-            previousDirection,
-          )
-          : true;
-
-        if (!insidePreviousRange && allowedAfterPrevious) {
-          return;
-        }
-      }
+    if (startSurah || startVerse) {
+      return;
     }
 
-    const nextSurah = String(nextStartFromPrevious.surahNumber);
-    const nextVerse = String(nextStartFromPrevious.verseNumber);
-
-    if (startSurah !== nextSurah) {
-      setStartSurah(nextSurah);
-    }
-
-    if (startVerse !== nextVerse) {
-      setStartVerse(nextVerse);
-    }
-  }, [hasPrevious, normalizedPreviousRanges.length, nextStartFromPrevious, startSurah, startVerse]);
+    setStartSurah(String(nextStartFromPrevious.surahNumber));
+    setStartVerse(String(nextStartFromPrevious.verseNumber));
+  }, [hasPrevious, isEditingPlan, normalizedPreviousRanges.length, nextStartFromPrevious, startSurah, startVerse]);
 
   useEffect(() => {
     if (startOpen && startSurah) {

@@ -45,10 +45,19 @@ export function GlobalEditStudentDialog() {
 	const [selectedCircleForEdit, setSelectedCircleForEdit] = useState("")
 	const [selectedStudentForEdit, setSelectedStudentForEdit] = useState("")
 	const [editingStudent, setEditingStudent] = useState<Student | null>(null)
+	const [editStudentName, setEditStudentName] = useState("")
+	const [editStudentHalaqah, setEditStudentHalaqah] = useState("")
 	const [editGuardianPhone, setEditGuardianPhone] = useState("")
 	const [editStudentIdNumber, setEditStudentIdNumber] = useState("")
 	const [editStudentAccountNumber, setEditStudentAccountNumber] = useState("")
 	const [isSubmitting, setIsSubmitting] = useState(false)
+
+	const availableCircles = Array.from(
+		new Set([
+			...circles.map((circle) => circle.name.trim()),
+			...Object.keys(studentsInCircles).map((circleName) => circleName.trim()),
+		].filter(Boolean)),
+	).sort((first, second) => first.localeCompare(second, "ar"))
 
 	useEffect(() => {
 		fetchData()
@@ -95,6 +104,8 @@ export function GlobalEditStudentDialog() {
 		setSelectedStudentForEdit(studentId)
 		const student = (studentsInCircles[selectedCircleForEdit] || []).find((item) => item.id === studentId) || null
 		setEditingStudent(student)
+		setEditStudentName(student?.name || "")
+		setEditStudentHalaqah(student ? getStudentCircleName(student) : "")
 		setEditGuardianPhone(student?.guardian_phone || "")
 		setEditStudentIdNumber(student?.id_number || "")
 		setEditStudentAccountNumber(student?.account_number != null ? String(student.account_number) : "")
@@ -112,6 +123,8 @@ export function GlobalEditStudentDialog() {
 				},
 				body: JSON.stringify({
 					id: editingStudent.id,
+					name: editStudentName,
+					halaqah: editStudentHalaqah,
 					guardian_phone: editGuardianPhone,
 					id_number: editStudentIdNumber,
 					account_number: editStudentAccountNumber.trim() || null,
@@ -133,6 +146,8 @@ export function GlobalEditStudentDialog() {
 			setEditingStudent(null)
 			setSelectedStudentForEdit("")
 			setSelectedCircleForEdit("")
+			setEditStudentName("")
+			setEditStudentHalaqah("")
 			setEditGuardianPhone("")
 			setEditStudentIdNumber("")
 			setEditStudentAccountNumber("")
@@ -168,6 +183,8 @@ export function GlobalEditStudentDialog() {
 								setSelectedCircleForEdit(value)
 								setSelectedStudentForEdit("")
 								setEditingStudent(null)
+								setEditStudentName("")
+								setEditStudentHalaqah("")
 								setEditGuardianPhone("")
 								setEditStudentIdNumber("")
 								setEditStudentAccountNumber("")
@@ -178,9 +195,9 @@ export function GlobalEditStudentDialog() {
 								<SelectValue placeholder="اختر الحلقة" />
 							</SelectTrigger>
 							<SelectContent dir="rtl">
-								{circles.map((circle) => (
-									<SelectItem key={circle.id} value={circle.name}>
-										{circle.name}
+								{availableCircles.map((circleName) => (
+									<SelectItem key={circleName} value={circleName}>
+										{circleName}
 									</SelectItem>
 								))}
 							</SelectContent>
@@ -203,6 +220,30 @@ export function GlobalEditStudentDialog() {
 					</div>
 					{editingStudent && (
 						<>
+							<div className="space-y-2">
+								<Label className="text-sm font-medium text-neutral-600">اسم الطالب</Label>
+								<Input
+									value={editStudentName}
+									onChange={(event) => setEditStudentName(event.target.value)}
+									placeholder="أدخل اسم الطالب"
+									className="text-sm"
+								/>
+							</div>
+							<div className="space-y-2">
+								<Label className="text-sm font-medium text-neutral-600">الحلقة</Label>
+								<Select value={editStudentHalaqah} onValueChange={setEditStudentHalaqah} dir="rtl">
+									<SelectTrigger className="w-full text-base">
+										<SelectValue placeholder="اختر الحلقة" />
+									</SelectTrigger>
+									<SelectContent dir="rtl">
+										{availableCircles.map((circleName) => (
+											<SelectItem key={circleName} value={circleName}>
+												{circleName}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</div>
 							<div className="space-y-2">
 								<Label className="text-sm font-medium text-neutral-600">رقم الهوية</Label>
 								<Input

@@ -1,6 +1,20 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
+function getErrorMessage(error: unknown) {
+  if (!error) return "حدث خطأ غير معروف"
+  if (error instanceof Error) return error.message || "حدث خطأ غير معروف"
+  if (typeof error === "object") {
+    const candidate = error as { message?: string; details?: string; hint?: string; code?: string }
+    return candidate.message || candidate.details || candidate.hint || candidate.code || JSON.stringify(candidate)
+  }
+  return String(error)
+}
+
+function normalizeCircleName(value: unknown) {
+  return String(value || "").trim()
+}
+
 // Enable route caching for 30 seconds
 export const revalidate = 30
 
@@ -24,15 +38,16 @@ export async function GET() {
     // Count students per circle
     const studentCounts = new Map()
     students?.forEach((student) => {
-      if (student.halaqah) {
-        studentCounts.set(student.halaqah, (studentCounts.get(student.halaqah) || 0) + 1)
+      const normalizedHalaqah = normalizeCircleName(student.halaqah)
+      if (normalizedHalaqah) {
+        studentCounts.set(normalizedHalaqah, (studentCounts.get(normalizedHalaqah) || 0) + 1)
       }
     })
 
     const circlesWithCounts = circles?.map((circle) => ({
       id: circle.id,
       name: circle.name,
-      studentCount: studentCounts.get(circle.name) || 0,
+      studentCount: studentCounts.get(normalizeCircleName(circle.name)) || 0,
       created_at: circle.created_at,
     }))
 
@@ -46,7 +61,7 @@ export async function GET() {
     )
   } catch (error) {
     console.error("[v0] Error fetching circles:", error)
-    return NextResponse.json({ error: "Failed to fetch circles" }, { status: 500 })
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 })
   }
 }
 
@@ -54,19 +69,19 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const { name } = await request.json()
+    const normalizedName = normalizeCircleName(name)
 
-    if (!name || typeof name !== "string") {
-      return NextResponse.json({ error: "Circle name is required" }, { status: 400 })
+    if (!normalizedName) {
+      return NextResponse.json({ error: "اسم الحلقة مطلوب" }, { status: 400 })
     }
 
     const supabase = await createClient()
 
-    const { data, error } = await supabase.from("circles").insert({ name }).select().single()
+    const { data, error } = await supabase.from("circles").insert({ name: normalizedName }).select().single()
 
     if (error) {
       if (error.code === "23505") {
-        // Unique constraint violation
-        return NextResponse.json({ error: "Circle with this name already exists" }, { status: 400 })
+        return NextResponse.json({ error: "حلقة بهذا الاسم موجودة بالفعل" }, { status: 400 })
       }
       throw error
     }
@@ -74,7 +89,70 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, circle: data })
   } catch (error) {
     console.error("[v0] Error adding circle:", error)
-    return NextResponse.json({ error: "Failed to add circle" }, { status: 500 })
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 })
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const body = await request.json()
+    const currentName = normalizeCircleName(body.current_name)
+    const nextName = normalizeCircleName(body.new_name)
+
+    if (!currentName || !nextName) {
+      return NextResponse.json({ error: "الاسم الحالي والجديد مطلوبان" }, { status: 400 })
+    }
+
+    if (currentName === nextName) {
+      return NextResponse.json({ success: true })
+    }
+
+    const supabase = await createClient()
+
+    const { data: existingCircle, error: existingCircleError } = await supabase
+      .from("circles")
+      .select("id")
+      .eq("name", currentName)
+      .maybeSingle()
+
+    if (existingCircleError) throw existingCircleError
+    if (!existingCircle) {
+      return NextResponse.json({ error: "الحلقة غير موجودة" }, { status: 404 })
+    }
+
+    const { data: duplicateCircle, error: duplicateError } = await supabase
+      .from("circles")
+      .select("id")
+      .eq("name", nextName)
+      .maybeSingle()
+
+    if (duplicateError) throw duplicateError
+    if (duplicateCircle) {
+      return NextResponse.json({ error: "حلقة بهذا الاسم موجودة بالفعل" }, { status: 400 })
+    }
+
+    const { error: updateCircleError } = await supabase.from("circles").update({ name: nextName }).eq("name", currentName)
+    if (updateCircleError) throw updateCircleError
+
+    const tablesToSync = [
+      "students",
+      "users",
+      "attendance_records",
+      "recitation_days",
+      "recitation_day_students",
+    ]
+
+    for (const tableName of tablesToSync) {
+      const { error } = await supabase.from(tableName).update({ halaqah: nextName }).eq("halaqah", currentName)
+      if (error) {
+        throw error
+      }
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error("[v0] Error renaming circle:", error)
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 })
   }
 }
 
@@ -82,10 +160,10 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
-    const circleName = searchParams.get("name")
+    const circleName = normalizeCircleName(searchParams.get("name"))
 
     if (!circleName) {
-      return NextResponse.json({ error: "Circle name is required" }, { status: 400 })
+      return NextResponse.json({ error: "اسم الحلقة مطلوب" }, { status: 400 })
     }
 
     const supabase = await createClient()
@@ -112,6 +190,6 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("[v0] Error deleting circle:", error)
-    return NextResponse.json({ error: "Failed to delete circle" }, { status: 500 })
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 })
   }
 }

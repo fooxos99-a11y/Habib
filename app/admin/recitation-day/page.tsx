@@ -358,19 +358,28 @@ export default function AdminRecitationDayPage() {
 
   async function loadStartHalaqahOptions() {
     try {
-      const response = await fetch("/api/circles", { cache: "no-store" })
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data.error || "تعذر جلب الحلقات")
+      const [circlesResponse, studentsResponse] = await Promise.all([
+        fetch("/api/circles", { cache: "no-store" }),
+        fetch("/api/students", { cache: "no-store" }),
+      ])
+
+      const circlesData = await circlesResponse.json()
+      const studentsData = await studentsResponse.json()
+
+      if (!circlesResponse.ok) {
+        throw new Error(circlesData.error || "تعذر جلب الحلقات")
+      }
+
+      if (!studentsResponse.ok) {
+        throw new Error(studentsData.error || "تعذر جلب الطلاب")
       }
 
       const options = Array.from<string>(
-        new Set(
-          (data.circles || [])
-            .filter((circle: { name?: string | null; studentCount?: number | null }) => String(circle?.name || "").trim() && Number(circle?.studentCount || 0) > 0)
-            .map((circle: { name?: string | null }) => String(circle.name || "").trim()),
-        ),
-      ).sort()
+        new Set([
+          ...(circlesData.circles || []).map((circle: { name?: string | null }) => String(circle?.name || "").trim()),
+          ...(studentsData.students || []).map((student: { halaqah?: string | null; circle_name?: string | null }) => String(student?.halaqah || student?.circle_name || "").trim()),
+        ].filter(Boolean)),
+      ).sort((first, second) => first.localeCompare(second, "ar"))
 
       setStartHalaqahOptions(options)
     } catch (error) {
@@ -717,7 +726,7 @@ export default function AdminRecitationDayPage() {
 
       if (!response.ok || !data.success) {
         throw new Error(data.error || "تعذر حفظ إعدادات التقييم")
-      }https://github.com/fooxos99-a11y/habiib/blob/main/app/admin/recitation-day/page.tsx
+      }
 
       setGradingSettingsForm(normalizedSettings)
       setIsGradingSettingsDialogOpen(false)
@@ -895,7 +904,7 @@ export default function AdminRecitationDayPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <div className="text-sm font-bold text-[#1a2332]">من</div>
-                <Input type="date" value={recitationStartDate} max={recitationEndDate || undefined} onChange={(event) => setRecitationStartDate(event.target.value)} className="border-[#d8e4fb]" />
+                <Input type="date" value={recitationStartDate} onChange={(event) => setRecitationStartDate(event.target.value)} className="border-[#d8e4fb]" />
               </div>
               <div className="space-y-2">
                 <div className="text-sm font-bold text-[#1a2332]">إلى</div>

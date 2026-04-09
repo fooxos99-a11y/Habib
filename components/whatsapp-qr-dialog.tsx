@@ -45,9 +45,17 @@ const DEFAULT_STATUS: WhatsAppStatusResponse = {
   qrImageUrl: null,
 }
 
-function getAutoRefreshIntervalMs(status: WhatsAppStatusResponse) {
+function getAutoRefreshIntervalMs(status: WhatsAppStatusResponse, imageFailed: boolean) {
   if (status.ready) {
     return 0
+  }
+
+  if (imageFailed) {
+    return 1200
+  }
+
+  if (status.qrAvailable) {
+    return 1200
   }
 
   switch (status.status) {
@@ -55,11 +63,11 @@ function getAutoRefreshIntervalMs(status: WhatsAppStatusResponse) {
     case "disconnecting":
     case "fetching_qr":
     case "starting":
-      return 2500
+      return 1200
     case "waiting_for_qr":
-      return 10000
+      return 1500
     default:
-      return 0
+      return status.workerOnline ? 5000 : 0
   }
 }
 
@@ -134,10 +142,14 @@ export function WhatsAppQrDialog({ open, onOpenChange, initialStatus }: WhatsApp
   const [isLoadingStatus, setIsLoadingStatus] = useState(false)
   const [imageFailed, setImageFailed] = useState(false)
   const [isDisconnecting, setIsDisconnecting] = useState(false)
+  const [qrImageVersion, setQrImageVersion] = useState(0)
 
   const statusUi = useMemo(() => getStatusUi(status), [status])
   const canDisconnect = status.ready && status.authenticated && status.status === "connected" && !isDisconnecting
-  const autoRefreshIntervalMs = getAutoRefreshIntervalMs(status)
+  const autoRefreshIntervalMs = getAutoRefreshIntervalMs(status, imageFailed)
+  const qrImageSrc = status.qrImageUrl
+    ? `${status.qrImageUrl}${status.qrImageUrl.includes("?") ? "&" : "?"}v=${qrImageVersion}`
+    : null
 
   const fetchStatus = async ({ silent = false }: { silent?: boolean } = {}) => {
     try {
@@ -153,6 +165,7 @@ export function WhatsAppQrDialog({ open, onOpenChange, initialStatus }: WhatsApp
       const data = (await response.json()) as WhatsAppStatusResponse
       setStatus({ ...DEFAULT_STATUS, ...data })
       setImageFailed(false)
+      setQrImageVersion((current) => current + 1)
     } catch (error) {
       console.error("[whatsapp-qr-dialog] fetch status:", error)
     } finally {
@@ -191,6 +204,30 @@ export function WhatsAppQrDialog({ open, onOpenChange, initialStatus }: WhatsApp
       window.clearInterval(intervalId)
     }
   }, [open, autoRefreshIntervalMs])
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+
+    const handleFocus = () => {
+      void fetchStatus({ silent: true })
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void fetchStatus({ silent: true })
+      }
+    }
+
+    window.addEventListener("focus", handleFocus)
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener("focus", handleFocus)
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+    }
+  }, [open])
 
   const handleDisconnect = async () => {
     const confirmed = await confirmDialog({
@@ -278,13 +315,16 @@ export function WhatsAppQrDialog({ open, onOpenChange, initialStatus }: WhatsApp
           </DialogHeader>
 
           <div className="space-y-4 p-5">
-            {status.qrAvailable && status.qrImageUrl && !imageFailed ? (
+            {status.qrAvailable && qrImageSrc && !imageFailed ? (
               <div className="flex justify-center rounded-[24px] border border-dashed border-[#cfdcf2] bg-[radial-gradient(circle_at_top,#ffffff_0%,#f8fbff_55%,#eef3ff_100%)] p-4">
                 <img
-                  src={status.qrImageUrl}
+                  src={qrImageSrc}
                   alt="باركود واتساب"
                   className="h-auto w-full max-w-[280px] rounded-2xl bg-white p-3 shadow-[0_14px_40px_rgba(20,39,92,0.10)]"
-                  onError={() => setImageFailed(true)}
+                  onError={() => {
+                    setImageFailed(true)
+                    void fetchStatus({ silent: true })
+                  }}
                 />
               </div>
             ) : (

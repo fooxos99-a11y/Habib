@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/components/ui/use-toast"
+import { normalizeGuardianPhoneForStorage } from "@/lib/phone-number"
 import { Plus, Upload, Users } from "lucide-react"
 
 type BulkRow = { name: string; idNumber: string; account: string; guardianPhone: string }
@@ -98,7 +99,15 @@ const normalizeBulkRow = (row: BulkRow): BulkRow => ({
   name: row.name.trim(),
   idNumber: extractDigits(row.idNumber),
   account: extractDigits(row.account),
-  guardianPhone: extractDigits(row.guardianPhone),
+  guardianPhone: row.guardianPhone.trim()
+    ? (() => {
+        try {
+          return normalizeGuardianPhoneForStorage(row.guardianPhone)
+        } catch {
+          return extractDigits(row.guardianPhone)
+        }
+      })()
+    : "",
 })
 
 const parseStudentImportRows = (sheetRows: string[][]): BulkRow[] => {
