@@ -235,8 +235,8 @@ export function GlobalCirclesDialog() {
               <Settings className="absolute right-0 top-1/2 h-5 w-5 -translate-y-1/2 text-[#3453a7]" />
               <span>إدارة الحلقات</span>
             </DialogTitle>
-            <div className="absolute left-6 top-1/2 -translate-y-1/2">
-              <Button onClick={() => setIsAddDialogOpen(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-[#3453a7] bg-[#3453a7] text-white hover:bg-[#24428f] hover:text-white [&_svg]:text-white shadow-none">
+            <div className="absolute left-6 top-1/2 flex -translate-y-1/2 items-center gap-2">
+              <Button onClick={() => setIsAddDialogOpen(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-[#3453a7] bg-[#3453a7] hover:bg-[#28448e] text-white hover:text-white text-sm font-semibold shadow-none focus-visible:ring-0 focus-visible:border-[#3453a7]">
                 <Plus className="w-4 h-4" />
                 إضافة
               </Button>
