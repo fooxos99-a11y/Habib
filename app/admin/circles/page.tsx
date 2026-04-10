@@ -383,7 +383,6 @@ export default function CircleManagement() {
         <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto" dir="rtl">
           <DialogHeader>
             <DialogTitle className="text-xl text-[#1a2332]">طلاب {selectedCircle?.name}</DialogTitle>
-            <DialogDescription className="text-sm text-neutral-500">عرض الطلاب وإدارتهم</DialogDescription>
           </DialogHeader>
           <div className="space-y-2 py-2">
             {isLoadingStudents ? (

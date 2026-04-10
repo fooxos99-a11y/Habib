@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 
 import { isTeacherRole, requireRoles } from "@/lib/auth/guards"
 import { insertNotificationsAndSendPush } from "@/lib/push-notifications"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 
 function normalizeHalaqah(value: string | null | undefined) {
   return String(value || "").trim().toLowerCase()
@@ -46,7 +46,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "رقم الحساب غير صالح في أحد الإشعارات" }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     if (isTeacherRole(auth.session.role)) {
       const targetAccountNumbers = Array.from(

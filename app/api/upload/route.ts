@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 import { requireRoles } from "@/lib/auth/guards"
 
@@ -11,7 +11,7 @@ export async function POST(request: Request) {
       return auth.response
     }
 
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
     if (!file) {

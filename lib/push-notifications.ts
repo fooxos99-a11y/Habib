@@ -84,16 +84,55 @@ function normalizeWebPushSubject(subject: string | undefined) {
   return "mailto:notifications@example.com"
 }
 
+function decodeBase64Url(value: string) {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/")
+  const padding = "=".repeat((4 - (normalized.length % 4)) % 4)
+  return Buffer.from(`${normalized}${padding}`, "base64")
+}
+
+function isPlaceholderValue(value: string) {
+  const normalized = value.trim().toLowerCase()
+  return !normalized || normalized.startsWith("fill_") || normalized.startsWith("your_")
+}
+
+function isValidVapidPublicKey(value: string) {
+  const normalized = value.trim()
+  if (isPlaceholderValue(normalized) || !/^[A-Za-z0-9_-]+$/.test(normalized)) {
+    return false
+  }
+
+  try {
+    return decodeBase64Url(normalized).length === 65
+  } catch {
+    return false
+  }
+}
+
+function isValidVapidPrivateKey(value: string) {
+  const normalized = value.trim()
+  if (isPlaceholderValue(normalized) || !/^[A-Za-z0-9_-]+$/.test(normalized)) {
+    return false
+  }
+
+  try {
+    return decodeBase64Url(normalized).length === 32
+  } catch {
+    return false
+  }
+}
+
 function getWebPushConfig() {
-  const publicKey = process.env.NEXT_PUBLIC_WEB_PUSH_PUBLIC_KEY || process.env.WEB_PUSH_PUBLIC_KEY
-  const privateKey = process.env.WEB_PUSH_PRIVATE_KEY
+  const publicKey = String(process.env.NEXT_PUBLIC_WEB_PUSH_PUBLIC_KEY || process.env.WEB_PUSH_PUBLIC_KEY || "").trim()
+  const privateKey = String(process.env.WEB_PUSH_PRIVATE_KEY || "").trim()
   const subject = normalizeWebPushSubject(process.env.WEB_PUSH_SUBJECT)
+  const hasValidPublicKey = isValidVapidPublicKey(publicKey)
+  const hasValidPrivateKey = isValidVapidPrivateKey(privateKey)
 
   return {
-    publicKey: publicKey || "",
-    privateKey: privateKey || "",
+    publicKey: hasValidPublicKey ? publicKey : "",
+    privateKey: hasValidPrivateKey ? privateKey : "",
     subject,
-    configured: Boolean(publicKey && privateKey),
+    configured: hasValidPublicKey && hasValidPrivateKey,
   }
 }
 

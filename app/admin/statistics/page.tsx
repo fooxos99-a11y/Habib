@@ -7,18 +7,8 @@ import { BookOpen, ChevronDown, Link2, Orbit, Percent, Trophy, Users, type Lucid
 import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
 import { SiteLoader } from "@/components/ui/site-loader";
-import { getOrCreateActiveSemester, isMissingSemestersTable, isNoActiveSemesterError } from "@/lib/semesters";
 import { useAdminAuth } from "@/hooks/use-admin-auth";
 import { getStudyWeekEnd, getStudyWeekStart, isStudyDay } from "@/lib/study-calendar";
-import { createClient } from "@/lib/supabase/client";
-import { getPlanForDate, groupPlansByStudent } from "@/lib/plan-history";
-import { calculatePreviousMemorizedPages, resolvePlanReviewPagesForDate, resolvePlanReviewPoolPages } from "@/lib/quran-data";
-import {
-  applyAttendancePointsAdjustment,
-  calculateTotalEvaluationPoints,
-  isPassingMemorizationLevel,
-  type EvaluationLevelValue,
-} from "@/lib/student-attendance";
 
 type DateFilter = "today" | "currentWeek" | "currentMonth" | "all" | "custom";
 
@@ -703,267 +693,23 @@ export default function StatisticsPage() {
     setError("");
 
     try {
-      const supabase = createClient();
-      const { start, end } = getDateRange(dateFilter, customRange);
-      let activeSemesterId: string | null = null;
-      let activeSemesterStartDate: Date | null = null;
-
-      try {
-        const activeSemester = await getOrCreateActiveSemester(supabase);
-        activeSemesterId = activeSemester.id;
-        activeSemesterStartDate = activeSemester.start_date ? new Date(`${activeSemester.start_date}T00:00:00`) : null;
-      } catch (semesterError) {
-        if (isNoActiveSemesterError(semesterError)) {
-          setCounts({ circles: 0, students: 0 });
-          setTotals({ memorized: 0, revised: 0, tied: 0 });
-          setTopMemorizers([]);
-          setTopRevisers([]);
-          setTopTied([]);
-          setTopCircles([]);
-          setAllCircles([]);
-          setError("لا يوجد فصل نشط حاليًا. ابدأ فصلًا جديدًا لعرض الإحصائيات الحالية.");
-          setLoading(false);
-          return;
-        }
-        if (!isMissingSemestersTable(semesterError)) {
-          throw semesterError;
-        }
+      const searchParams = new URLSearchParams({ filter: dateFilter });
+      if (dateFilter === "custom") {
+        searchParams.set("start", customRange.start);
+        searchParams.set("end", customRange.end);
       }
 
-      let plansQuery = supabase.from("student_plans").select("id, student_id, start_date, created_at, daily_pages, muraajaa_pages, rabt_pages, review_distribution_mode, muraajaa_mode, weekly_muraajaa_min_daily_pages, weekly_muraajaa_start_day, weekly_muraajaa_end_day, has_previous, prev_start_surah, prev_start_verse, prev_end_surah, prev_end_verse, previous_memorization_ranges, completed_juzs");
-      if (activeSemesterId) {
-        plansQuery = plansQuery.eq("semester_id", activeSemesterId);
-      }
+      const response = await fetch(`/api/statistics/summary?${searchParams.toString()}`, { cache: "no-store" });
+      const payload = await response.json();
 
-      let dailyReportsQuery = supabase
-        .from("student_daily_reports")
-        .select("student_id, report_date, memorization_done, review_done, linking_done");
-
-      const [studentsResult, circlesResult, plansResult] = await Promise.all([
-        supabase.from("students").select("id, name, halaqah"),
-        supabase.from("circles").select("id, name"),
-        plansQuery,
-      ]);
-
-      if (studentsResult.error) {
-        throw studentsResult.error;
-      }
-
-      if (circlesResult.error) {
-        throw circlesResult.error;
-      }
-
-      if (plansResult.error) {
-        throw plansResult.error;
-      }
-
-      let attendanceQuery = supabase.from("attendance_records").select(`
-        id,
-        student_id,
-        halaqah,
-        date,
-        status,
-        evaluations (hafiz_level, tikrar_level, samaa_level, rabet_level)
-      `);
-
-      if (activeSemesterId) {
-        attendanceQuery = attendanceQuery.eq("semester_id", activeSemesterId);
-      }
-
-      if (dateFilter !== "all") {
-        attendanceQuery = attendanceQuery
-          .gte("date", formatDateForQuery(start))
-          .lte("date", formatDateForQuery(end));
-
-        dailyReportsQuery = dailyReportsQuery
-          .gte("report_date", formatDateForQuery(start))
-          .lte("report_date", formatDateForQuery(end));
-      }
-
-      const [attendanceResult, dailyReportsResult] = await Promise.all([attendanceQuery, dailyReportsQuery]);
-
-      if (attendanceResult.error) {
-        throw attendanceResult.error;
-      }
-
-      const dailyReportsTableMissing = dailyReportsResult.error?.code === "PGRST205" && String(dailyReportsResult.error.message || "").includes("student_daily_reports");
-      if (dailyReportsResult.error && !dailyReportsTableMissing) {
-        throw dailyReportsResult.error;
-      }
-
-      const students = (studentsResult.data ?? []) as StudentRow[];
-      const circles = (circlesResult.data ?? []) as CircleRow[];
-      const plans = (plansResult.data ?? []) as PlanRow[];
-      const dailyReports = (dailyReportsResult.data ?? []) as DailyReportRow[];
-      const plansByStudent = groupPlansByStudent(plans);
-      const plannedStudentIds = new Set(Array.from(plansByStudent.keys()));
-      const attendance = ((attendanceResult.data ?? []) as AttendanceRow[]).filter(
-        (record) => isStudyDay(record.date) && plannedStudentIds.has(record.student_id),
-      );
-      const studyDayCount = dateFilter === "all"
-        ? countStudyDaysInRange(activeSemesterStartDate ?? start, end)
-        : countStudyDaysInRange(start, end);
-
-      setCounts({ circles: circles.length, students: students.length });
-      setAllCircles([...circles].sort((left, right) => (left.name || "").localeCompare(right.name || "", "ar")));
-
-      const studentNames = new Map(students.map((student) => [student.id, student.name?.trim() || TEXT.unknownStudent]));
-      const studentCircles = new Map(students.map((student) => [student.id, student.halaqah?.trim() || TEXT.unknownCircle]));
-      const studentStats = new Map<string, StudentSummary>();
-      const circleStats = new Map<string, CircleSummary>();
-      const dailyReportsByStudentDate = new Map<string, DailyReportRow>();
-      const memorizedPoolByStudent = new Map<string, number>();
-      const reviewCompletedByStudent = new Map<string, number>();
-
-      for (const report of dailyReports) {
-        dailyReportsByStudentDate.set(`${report.student_id}|${report.report_date}`, report);
-      }
-
-      for (const studentId of plannedStudentIds) {
-        const circleName = studentCircles.get(studentId) ?? TEXT.unknownCircle;
-
-        if (circleName === TEXT.unknownCircle) {
-          continue;
-        }
-
-        const circleSummary = circleStats.get(circleName) ?? createCircleSummary(circleName);
-        circleSummary.plannedStudentsCount += 1;
-        circleStats.set(circleName, circleSummary);
-      }
-
-      for (const circleSummary of circleStats.values()) {
-        circleSummary.expectedRecords = circleSummary.plannedStudentsCount * studyDayCount;
-        circleSummary.maxPoints = circleSummary.expectedRecords * MAX_EVALUATION_POINTS_PER_STUDY_DAY;
-      }
-
-      let memorizedTotal = 0;
-      let revisedTotal = 0;
-      let tiedTotal = 0;
-
-      const sortedAttendance = [...attendance].sort((left, right) => {
-        if (left.student_id !== right.student_id) {
-          return left.student_id.localeCompare(right.student_id);
-        }
-
-        return left.date.localeCompare(right.date);
-      });
-
-      for (const record of sortedAttendance) {
-        const studentId = record.student_id;
-        const studentPlans = plansByStudent.get(studentId) || [];
-        const plan = getPlanForDate(studentPlans, record.date);
-        const circleName = record.halaqah?.trim() || studentCircles.get(studentId) || TEXT.unknownCircle;
-
-        // Students without plans should not affect student totals or circle performance ratios.
-        if (!plan) {
-          continue;
-        }
-
-        const studentName = studentNames.get(studentId) ?? TEXT.unknownStudent;
-        const studentSummary = studentStats.get(studentId) ?? createStudentSummary(studentId, studentName, circleName);
-        studentStats.set(studentId, studentSummary);
-        if (studentSummary.circleName === TEXT.unknownCircle && circleName !== TEXT.unknownCircle) {
-          studentSummary.circleName = circleName;
-        }
-
-        if (circleName === TEXT.unknownCircle) {
-          continue;
-        }
-
-        const circleSummary = circleStats.get(circleName) ?? createCircleSummary(circleName);
-        circleStats.set(circleName, circleSummary);
-
-        const dailyPages = Number(plan?.daily_pages ?? 1);
-        const status = record.status ?? "";
-        const isPresent = status === "present" || status === "late";
-        const dailyReport = dailyReportsByStudentDate.get(`${studentId}|${record.date}`);
-        const { reviewDone, linkingDone } = getDailyCompletionFlags(record, dailyReport);
-        const memorizedPoolPages = memorizedPoolByStudent.has(studentId)
-          ? (memorizedPoolByStudent.get(studentId) ?? 0)
-          : calculatePreviousMemorizedPages(plan);
-        const reviewPoolPages = resolvePlanReviewPoolPages(plan, memorizedPoolPages);
-        const reviewPages = resolvePlanReviewPagesForDate(plan, reviewPoolPages, reviewCompletedByStudent.get(studentId) ?? 0, record.date);
-        const tiePages = Math.min(Number(plan?.rabt_pages ?? 0), Math.max(0, memorizedPoolPages));
-
-        studentSummary.maxPoints += MAX_EVALUATION_POINTS_PER_STUDY_DAY;
-        circleSummary.totalRecords += 1;
-
-        if (!isPresent) {
-          continue;
-        }
-
-        circleSummary.totalAttend += 1;
-
-        const evaluation = getEvaluationRecord(record.evaluations);
-
-        if (isPassingMemorizationLevel(evaluation.hafiz_level ?? null)) {
-          circleSummary.passedMemorizationSegments += 1;
-          studentSummary.memorized += dailyPages;
-          circleSummary.memorized += dailyPages;
-          memorizedTotal += dailyPages;
-        }
-
-        if (isPassingMemorizationLevel(evaluation.tikrar_level ?? null)) {
-          circleSummary.passedTikrarSegments += 1;
-        }
-
-        if (reviewDone) {
-          circleSummary.passedReviewSegments += 1;
-          studentSummary.revised += reviewPages;
-          circleSummary.revised += reviewPages;
-          revisedTotal += reviewPages;
-          reviewCompletedByStudent.set(studentId, (reviewCompletedByStudent.get(studentId) ?? 0) + 1);
-        }
-
-        if (linkingDone) {
-          circleSummary.passedTiedSegments += 1;
-          studentSummary.tied += tiePages;
-          circleSummary.tied += tiePages;
-          tiedTotal += tiePages;
-        }
-
-        if (isPassingMemorizationLevel(evaluation.hafiz_level ?? null)) {
-          memorizedPoolByStudent.set(studentId, memorizedPoolPages + dailyPages);
-        }
-
-        const earnedPoints = applyAttendancePointsAdjustment(calculateTotalEvaluationPoints(evaluation), status);
-        studentSummary.earnedPoints += earnedPoints;
-        circleSummary.earnedPoints += earnedPoints;
-      }
-
-      const studentArray = Array.from(studentStats.values()).map((item) => ({
-        ...item,
-        percent: item.maxPoints > 0 ? (item.earnedPoints / item.maxPoints) * 100 : 0,
-      }));
-
-      const circleArray = Array.from(circleStats.values())
-        .filter((item) => item.name !== TEXT.unknownCircle && item.expectedRecords > 0)
-        .map((item) => {
-        const evalPercent = item.maxPoints > 0 ? (item.earnedPoints / item.maxPoints) * 100 : 0;
-        const attendPercent = item.expectedRecords > 0 ? (item.totalAttend / item.expectedRecords) * 100 : 0;
-        const memorizedPercent = item.expectedRecords > 0 ? (item.passedMemorizationSegments / item.expectedRecords) * 100 : 0;
-        const tikrarPercent = item.expectedRecords > 0 ? (item.passedTikrarSegments / item.expectedRecords) * 100 : 0;
-        const revisedPercent = item.expectedRecords > 0 ? (item.passedReviewSegments / item.expectedRecords) * 100 : 0;
-        const tiedPercent = item.expectedRecords > 0 ? (item.passedTiedSegments / item.expectedRecords) * 100 : 0;
-        const score = evalPercent * 0.6 + attendPercent * 0.4;
-
-        return {
-          ...item,
-          evalPercent,
-          attendPercent,
-          memorizedPercent,
-          tikrarPercent,
-          revisedPercent,
-          tiedPercent,
-          score,
-        };
-      });
-
-      setTotals({ memorized: memorizedTotal, revised: revisedTotal, tied: tiedTotal });
-      setTopMemorizers([...studentArray].sort((left, right) => right.memorized - left.memorized).slice(0, 5));
-      setTopRevisers([...studentArray].sort((left, right) => right.revised - left.revised).slice(0, 5));
-      setTopTied([...studentArray].sort((left, right) => right.tied - left.tied).slice(0, 5));
-      setTopCircles([...circleArray].sort((left, right) => right.score - left.score).slice(0, 5));
+      setCounts(payload.counts || { circles: 0, students: 0 });
+      setTotals(payload.totals || { memorized: 0, revised: 0, tied: 0 });
+      setTopMemorizers(payload.topMemorizers || []);
+      setTopRevisers(payload.topRevisers || []);
+      setTopTied(payload.topTied || []);
+      setTopCircles(payload.topCircles || []);
+      setAllCircles(payload.allCircles || []);
+      setError(typeof payload.error === "string" ? payload.error : "");
     } catch (caughtError) {
       const message = getReadableErrorMessage(caughtError);
       setError(`${TEXT.loadError}: ${message}`);

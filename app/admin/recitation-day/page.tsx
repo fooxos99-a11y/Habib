@@ -892,6 +892,7 @@ export default function AdminRecitationDayPage() {
       <Dialog open={isStartDialogOpen} onOpenChange={setIsStartDialogOpen}>
         <DialogContent className="max-h-[88vh] w-[calc(100vw-1.5rem)] max-w-xl overflow-y-auto rounded-[28px] border border-[#dbe5f1] p-0 shadow-[0_24px_70px_rgba(15,23,42,0.14)]" dir="rtl" onOpenAutoFocus={(event) => event.preventDefault()}>
           <DialogHeader className="border-b border-[#e8eef6] px-4 py-4 text-right sm:px-6">
+            <DialogDescription className="sr-only">نافذة بدء يوم السرد وتحديد التاريخ ونطاق الطلاب.</DialogDescription>
             <div className="flex items-center justify-between gap-3">
               <DialogTitle className="text-right text-lg font-black text-[#1a2332] sm:text-xl">بدء يوم السرد</DialogTitle>
               <Button type="button" variant="outline" onClick={() => setIsStartTemplatesDialogOpen(true)} className="h-10 rounded-full border-[#d8e4fb] px-4 text-[#3453a7] hover:bg-[#f5f8ff] sm:h-11 sm:px-5">
@@ -935,6 +936,7 @@ export default function AdminRecitationDayPage() {
       <Dialog open={isStartTemplatesDialogOpen} onOpenChange={setIsStartTemplatesDialogOpen}>
         <DialogContent className="max-h-[88vh] w-[calc(100vw-1.5rem)] max-w-2xl overflow-y-auto rounded-[28px] border border-[#dbe5f1] p-0 shadow-[0_24px_70px_rgba(15,23,42,0.14)]" dir="rtl" onOpenAutoFocus={(event) => event.preventDefault()}>
           <DialogHeader className="border-b border-[#e8eef6] px-4 py-4 sm:px-6">
+            <DialogDescription className="sr-only">نافذة تعديل قوالب رسائل بدء يوم السرد.</DialogDescription>
             <DialogTitle className="text-right text-lg font-black text-[#1a2332] sm:text-xl">قوالب بدء يوم السرد</DialogTitle>
           </DialogHeader>
 
@@ -967,6 +969,7 @@ export default function AdminRecitationDayPage() {
       <Dialog open={isArchiveConfirmOpen} onOpenChange={setIsArchiveConfirmOpen}>
         <DialogContent className="max-h-[88vh] w-[calc(100vw-1.5rem)] max-w-xl overflow-y-auto rounded-[28px] border border-[#dbe5f1] p-0 shadow-[0_24px_70px_rgba(15,23,42,0.14)]" dir="rtl" onOpenAutoFocus={(event) => event.preventDefault()}>
           <DialogHeader className="border-b border-[#e8eef6] px-4 py-4 text-right sm:px-6">
+            <DialogDescription className="sr-only">نافذة تأكيد إنهاء يوم السرد وتحديد نطاق الحلقات.</DialogDescription>
             <div className="flex items-center justify-between gap-3">
               <DialogTitle className="text-right text-lg font-black text-[#1a2332] sm:text-xl">إنهاء يوم السرد</DialogTitle>
               <Button type="button" variant="outline" onClick={() => setIsTemplatesDialogOpen(true)} className="h-10 rounded-full border-[#d8e4fb] px-4 text-[#3453a7] hover:bg-[#f5f8ff] sm:h-11 sm:px-5">
@@ -1000,6 +1003,7 @@ export default function AdminRecitationDayPage() {
       <Dialog open={isTemplatesDialogOpen} onOpenChange={setIsTemplatesDialogOpen}>
         <DialogContent className="max-h-[88vh] max-w-4xl overflow-y-auto" dir="rtl" onOpenAutoFocus={(event) => event.preventDefault()}>
           <DialogHeader>
+            <DialogDescription className="sr-only">نافذة قوالب تنبيهات يوم السرد داخل المنصة وعبر واتساب.</DialogDescription>
             <div className="relative text-right">
               <DialogTitle className="text-right text-xl font-black">قوالب تنبيه يوم السرد</DialogTitle>
               <div className="absolute left-0 top-0 flex items-center">
@@ -1051,6 +1055,7 @@ export default function AdminRecitationDayPage() {
       <Dialog open={isGradingSettingsDialogOpen} onOpenChange={setIsGradingSettingsDialogOpen}>
         <DialogContent className="max-h-[88vh] max-w-3xl overflow-y-auto" dir="rtl" onOpenAutoFocus={(event) => event.preventDefault()}>
           <DialogHeader>
+            <DialogDescription className="sr-only">نافذة إعدادات تقييم يوم السرد وخصومات الأخطاء والتنبيهات.</DialogDescription>
             <DialogTitle className="text-right text-xl font-black">إعدادات تقييم يوم السرد</DialogTitle>
           </DialogHeader>
 
@@ -1102,7 +1107,7 @@ export default function AdminRecitationDayPage() {
 
       <Dialog open={Boolean(editingStudent)} onOpenChange={(open) => !open && setEditingStudent(null)}>
         <DialogContent className="max-h-[88vh] max-w-5xl overflow-y-auto" dir="rtl">
-          <DialogHeader><DialogTitle className="text-right text-xl font-black">تقييم الطالب</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-right text-xl font-black">تقييم الطالب</DialogTitle><DialogDescription className="sr-only">نافذة تقييم الطالب وأجزائه في يوم السرد.</DialogDescription></DialogHeader>
           {editingStudent ? (
             <div className="space-y-4 text-right">
               {(() => {
@@ -1162,7 +1167,7 @@ export default function AdminRecitationDayPage() {
 
       <Dialog open={Boolean(detailsStudent)} onOpenChange={(open) => !open && setDetailsStudent(null)}>
         <DialogContent className="max-h-[85vh] max-w-5xl overflow-y-auto" dir="rtl">
-          <DialogHeader><DialogTitle className="text-right text-xl font-black">تفاصيل طريقة التسميع</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-right text-xl font-black">تفاصيل طريقة التسميع</DialogTitle><DialogDescription className="sr-only">نافذة تعرض تفاصيل أجزاء تسميع الطالب الحالية.</DialogDescription></DialogHeader>
           {detailsStudent ? (
             <div className="space-y-4 text-right">
               <div className="rounded-[22px] border border-[#e6edf6] bg-[#f9fbff] px-4 py-4"><div className="text-lg font-black text-[#1a2332]">{detailsStudent.student_name}</div><div className="mt-2 text-sm text-[#526071]">{detailsStudent.full_memorized_text}</div></div>
@@ -1226,7 +1231,7 @@ export default function AdminRecitationDayPage() {
 
       <Dialog open={Boolean(archiveDetailsStudent)} onOpenChange={(open) => !open && setArchiveDetailsStudent(null)}>
         <DialogContent className="max-h-[85vh] max-w-4xl overflow-y-auto" dir="rtl">
-          <DialogHeader><DialogTitle className="text-right text-xl font-black">تفاصيل أجزاء التسميع</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-right text-xl font-black">تفاصيل أجزاء التسميع</DialogTitle><DialogDescription className="sr-only">نافذة تعرض تفاصيل أجزاء التسميع المؤرشفة للطالب.</DialogDescription></DialogHeader>
           {archiveDetailsStudent ? (
             <div className="space-y-3 text-right">
               <div className="grid gap-3 md:grid-cols-4">

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { requireRoles } from "@/lib/auth/guards"
 import {
   hydrateArchivedRecitationStudent,
@@ -25,7 +25,7 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
     }
 
     const { id } = await context.params
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { data: day, error: dayError } = await supabase
       .from("recitation_days")
       .select("*")
@@ -99,7 +99,7 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
     }
 
     const { id } = await context.params
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     const { data: day, error: dayError } = await supabase
       .from("recitation_days")

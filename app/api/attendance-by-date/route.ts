@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { ensureTeacherScope, requireRoles } from "@/lib/auth/guards"
 
 function isMissingStudentHafizExtrasTable(error: unknown) {
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
       return teacherScopeError
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     let query = supabase.from("attendance_records").select("id, student_id, status, date, notes, is_compensation").eq("date", date)
 

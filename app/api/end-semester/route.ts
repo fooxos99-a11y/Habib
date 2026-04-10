@@ -138,7 +138,7 @@ export async function POST(request: Request) {
       return auth.response
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const adminSupabase = createAdminClient()
     const activeSemester = await getOrCreateActiveSemester(supabase)
     const body = await request.json()

@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { User, Edit2, Save, X } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
 import { useAlertDialog } from "@/hooks/use-confirm-dialog"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
 import { SiteLoader } from "@/components/ui/site-loader"
@@ -23,6 +22,41 @@ interface AdminData {
   role: string
 }
 
+function createFallbackAdminData() {
+  if (typeof window === "undefined") {
+    return null
+  }
+
+  try {
+    const currentUser = localStorage.getItem("currentUser")
+    if (!currentUser) {
+      return null
+    }
+
+    const parsedUser = JSON.parse(currentUser) as {
+      id?: string
+      name?: string
+      role?: string
+      account_number?: number | string
+    }
+
+    if (!parsedUser?.id || !parsedUser?.name || !parsedUser?.account_number) {
+      return null
+    }
+
+    return {
+      id: String(parsedUser.id),
+      name: parsedUser.name,
+      account_number: Number(parsedUser.account_number),
+      id_number: null,
+      phone_number: null,
+      role: parsedUser.role || "admin",
+    } satisfies AdminData
+  } catch {
+    return null
+  }
+}
+
 export default function AdminProfilePage() {
   const { isLoading: authLoading, isVerified: authVerified } = useAdminAuth();
 
@@ -33,6 +67,7 @@ export default function AdminProfilePage() {
   const [editedPhoneNumber, setEditedPhoneNumber] = useState("")
   const [editedIdNumber, setEditedIdNumber] = useState("")
   const [isSaving, setIsSaving] = useState(false)
+  const [usingFallbackData, setUsingFallbackData] = useState(false)
   const router = useRouter()
   const alertDialog = useAlertDialog()
 
@@ -47,34 +82,59 @@ export default function AdminProfilePage() {
   }, [router])
 
   const fetchAdminData = async () => {
+    const fallbackAdminData = createFallbackAdminData()
+
     try {
       const accountNumber = localStorage.getItem("accountNumber")
-      const supabase = createClient()
+      const response = await fetch("/api/admin-users", { cache: "no-store" })
+      const payload = await response.json()
 
-      const adminRoles = ["admin", "مدير", "سكرتير", "مشرف تعليمي", "مشرف تربوي", "مشرف برامج"]
-      const { data, error } = await supabase
-        .from("users")
-        .select("*")
-        .eq("account_number", Number(accountNumber))
-        .neq("role", "student")
-        .neq("role", "teacher")
-        .neq("role", "deputy_teacher")
-        .single()
+      if (!response.ok) {
+        console.error("[v0] Error fetching admin data:", payload)
+        if (fallbackAdminData) {
+          setAdminData(fallbackAdminData)
+          setEditedName(fallbackAdminData.name || "")
+          setEditedPhoneNumber(fallbackAdminData.phone_number || "")
+          setEditedIdNumber(fallbackAdminData.id_number || "")
+          setUsingFallbackData(true)
+          return
+        }
 
-      if (error) {
-        console.error("[v0] Error fetching admin data:", error)
         await alertDialog("حدث خطأ أثناء تحميل البيانات")
         return
       }
+
+      const data = Array.isArray(payload.users)
+        ? payload.users.find((user: AdminData) => String(user.account_number) === String(accountNumber)) || null
+        : null
 
       if (data) {
         setAdminData(data)
         setEditedName(data.name || "")
         setEditedPhoneNumber(data.phone_number || "")
         setEditedIdNumber(data.id_number || "")
+        setUsingFallbackData(false)
+        return
+      }
+
+      if (fallbackAdminData) {
+        setAdminData(fallbackAdminData)
+        setEditedName(fallbackAdminData.name || "")
+        setEditedPhoneNumber(fallbackAdminData.phone_number || "")
+        setEditedIdNumber(fallbackAdminData.id_number || "")
+        setUsingFallbackData(true)
       }
     } catch (error) {
       console.error("[v0] Error fetching admin data:", error)
+      if (fallbackAdminData) {
+        setAdminData(fallbackAdminData)
+        setEditedName(fallbackAdminData.name || "")
+        setEditedPhoneNumber(fallbackAdminData.phone_number || "")
+        setEditedIdNumber(fallbackAdminData.id_number || "")
+        setUsingFallbackData(true)
+        return
+      }
+
       await alertDialog("حدث خطأ أثناء تحميل البيانات")
     } finally {
       setIsLoading(false)
@@ -84,6 +144,11 @@ export default function AdminProfilePage() {
   const handleSave = async () => {
     if (!adminData) return
 
+    if (usingFallbackData) {
+      await alertDialog("تعديل هذا الحساب المحلي غير متاح حتى يتم إصلاح صلاحيات جدول المستخدمين في Supabase")
+      return
+    }
+
     const normalizedName = editedName.trim()
     if (!normalizedName) {
       await alertDialog("يرجى إدخال الاسم الكامل")
@@ -92,19 +157,21 @@ export default function AdminProfilePage() {
 
     setIsSaving(true)
     try {
-      const supabase = createClient()
-
-      const { error } = await supabase
-        .from("users")
-        .update({
+      const response = await fetch("/api/admin-users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: adminData.id,
           name: normalizedName,
           phone_number: editedPhoneNumber || null,
           id_number: editedIdNumber || null,
-        })
-        .eq("id", adminData.id)
+        }),
+      })
 
-      if (error) {
-        console.error("[v0] Error updating admin data:", error)
+      const payload = await response.json()
+
+      if (!response.ok || !payload?.success) {
+        console.error("[v0] Error updating admin data:", payload)
         await alertDialog("حدث خطأ أثناء حفظ البيانات")
         return
       }
@@ -180,9 +247,11 @@ export default function AdminProfilePage() {
             <CardHeader className="bg-white flex flex-row items-center justify-between">
               <div>
                 <CardTitle className="text-2xl text-[#1a2332]">البيانات الشخصية</CardTitle>
-                <CardDescription className="text-base">معلومات الحساب الإداري</CardDescription>
+                <CardDescription className="text-base">
+                  {usingFallbackData ? "عرض محلي مؤقت للحساب الإداري" : "معلومات الحساب الإداري"}
+                </CardDescription>
               </div>
-              {!isEditing && (
+              {!isEditing && !usingFallbackData && (
                 <Button
                   onClick={() => setIsEditing(true)}
                   className="bg-gradient-to-r from-[#3453a7] to-[#4f73d1] hover:from-[#4f73d1] hover:to-[#b88341] text-white font-bold"

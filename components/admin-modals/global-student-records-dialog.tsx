@@ -3,7 +3,6 @@
 
 import React, { useEffect, useState, Suspense } from 'react'
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -30,16 +29,18 @@ export function GlobalStudentRecordsDialog() {
 
   const fetchData = async () => {
     try {
-      const supabase = createClient()
       const [circlesRes, studentsRes] = await Promise.all([
-        supabase.from("circles").select("*").order("created_at", { ascending: false }),
-        supabase.from("students").select("*")
+        fetch("/api/circles", { cache: "no-store" }),
+        fetch("/api/students", { cache: "no-store" }),
       ])
 
-      if (!circlesRes.error && circlesRes.data) setCircles(circlesRes.data)
-      if (!studentsRes.error && studentsRes.data) {
+      const circlesData = await circlesRes.json()
+      const studentsData = await studentsRes.json()
+
+      if (circlesRes.ok && circlesData.circles) setCircles(circlesData.circles)
+      if (studentsRes.ok && studentsData.students) {
         const grouped: Record<string, any[]> = {}
-        studentsRes.data.forEach((s) => {
+        studentsData.students.forEach((s: any) => {
           const circleName = s.halaqah || s.circle_name;
           if (circleName) {
             if (!grouped[circleName]) grouped[circleName] = []

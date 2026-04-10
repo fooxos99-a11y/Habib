@@ -237,7 +237,6 @@ export default function WhatsAppSendPage() {
           recipients: selectedStudentsData.map((student) => ({
             phoneNumber: student.guardian_phone,
             message: resolveMessageTemplate(message, student),
-            userId: localStorage.getItem("userId") || undefined,
           })),
         }),
       })
@@ -266,6 +265,7 @@ export default function WhatsAppSendPage() {
       } else {
       toast({
         title: "فشل",
+        description: data.error || "لم يتم تجهيز أي رسالة للإرسال",
         variant: "destructive",
       })
       }
@@ -273,6 +273,7 @@ export default function WhatsAppSendPage() {
       setIsSending(false)
       toast({
         title: "فشل",
+        description: error instanceof Error ? error.message : "حدث خطأ أثناء تجهيز رسائل واتساب",
         variant: "destructive",
       })
     }
@@ -297,8 +298,6 @@ export default function WhatsAppSendPage() {
   ).sort((first, second) => first.localeCompare(second, "ar"))
 
   const allFilteredSelected = filteredStudents.length > 0 && filteredStudents.every((student) => selectedStudents.includes(student.id))
-  const previewStudent = students.find((student) => selectedStudents.includes(student.id)) || filteredStudents[0] || null
-  const previewMessage = previewStudent && message.trim() ? resolveMessageTemplate(message, previewStudent) : ""
 
   return (
     <div className="min-h-screen flex flex-col bg-white">
@@ -426,18 +425,7 @@ export default function WhatsAppSendPage() {
                         rows={8}
                         className="resize-none"
                       />
-                      <p className="text-xs text-gray-500">{message.length} حرف</p>
                     </div>
-
-                    {previewMessage ? (
-                      <div className="rounded-2xl border border-[#3453a7]/15 bg-[#f8fbff] p-4 text-right">
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="text-sm font-bold text-[#1a2332]">معاينة الرسالة</p>
-                          <p className="text-xs text-gray-500">للطالب: {previewStudent?.name}</p>
-                        </div>
-                        <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-gray-700">{previewMessage}</p>
-                      </div>
-                    ) : null}
 
                     {sendResults && (
                       <div className="space-y-2 rounded-lg bg-white p-4">
@@ -459,14 +447,14 @@ export default function WhatsAppSendPage() {
                       onClick={handleSendMessages}
                       disabled={isSending || isWhatsAppStatusLoading || !isWhatsAppReady || selectedStudents.length === 0 || !message.trim()}
                       variant="outline"
-                      className="w-full text-sm h-9 rounded-lg border-[#3453a7]/50 bg-[linear-gradient(135deg,#24428f_0%,#3453a7_55%,#4f73d1_100%)] text-white hover:brightness-105 disabled:text-white disabled:opacity-60"
+                      className="w-full text-sm h-9 rounded-lg border-[#3453a7]/50 bg-[linear-gradient(135deg,#24428f_0%,#3453a7_55%,#4f73d1_100%)] !text-white hover:brightness-105 hover:!text-white focus-visible:!text-white active:!text-white disabled:!text-white disabled:opacity-60"
                     >
                       {isSending ? (
                         <>جاري الإرسال</>
                       ) : (
                         <>
                           <Send className="w-4 h-4 ml-2" />
-                          إرسال ({selectedStudents.length})
+                          إرسال
                         </>
                       )}
                     </Button>

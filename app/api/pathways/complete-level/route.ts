@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 import { ensureStudentAccess, requireRoles } from "@/lib/auth/guards";
 
@@ -10,7 +10,7 @@ export async function POST(request: Request) {
     }
 
     const { session } = auth;
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const body = await request.json();
     const { student_id, level_number, correct_count, total_count } = body;
 

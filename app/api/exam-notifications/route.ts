@@ -3,7 +3,7 @@ import { NextResponse } from "next/server"
 import { ensureStudentAccess, requireRoles } from "@/lib/auth/guards"
 import { insertNotificationsAndSendPush } from "@/lib/push-notifications"
 import { formatExamPortionLabel } from "@/lib/student-exams"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { buildExamAppNotificationMessage, getExamWhatsAppTemplates } from "@/lib/whatsapp-notification-templates"
 
 function formatScheduledDate(dateValue: string) {
@@ -50,7 +50,7 @@ export async function POST(request: Request) {
     }
 
     const { session } = auth
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const studentAccess = await ensureStudentAccess(supabase, session, studentId)
 
     if ("response" in studentAccess) {

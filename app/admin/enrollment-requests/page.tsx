@@ -12,7 +12,6 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { supabase } from "@/lib/supabase-client";
 import { toast } from "@/hooks/use-toast";
 import { useAdminAuth } from "@/hooks/use-admin-auth"
 import { getContiguousCompletedJuzRange, getJuzBoundsRange } from "@/lib/quran-data";
@@ -208,10 +207,17 @@ export default function EnrollmentRequestsPage() {
 
   useEffect(() => {
     const fetchCircles = async () => {
-      const { data, error } = await supabase.from("circles").select("id, name");
-      if (!error && data) setCircles(data);
+      try {
+        const response = await fetch("/api/circles", { cache: "no-store" });
+        const data = await response.json();
+        if (response.ok && Array.isArray(data.circles)) {
+          setCircles(data.circles);
+        }
+      } catch (error) {
+        console.error("[enrollment-requests] fetch circles:", error);
+      }
     };
-    fetchCircles();
+    void fetchCircles();
   }, []);
 
   const persistRequestTestResults = async (
@@ -219,17 +225,20 @@ export default function EnrollmentRequestsPage() {
     nextJuzTestResults: Record<number, EnrollmentJuzTestStatus>,
     nextJuzReviewResults: Record<number, EnrollmentJuzReviewStatus>,
   ) => {
-    const { error } = await supabase
-      .from("enrollment_requests")
-      .update({
-        test_reviewed: true,
-        juz_test_results: nextJuzTestResults,
-        juz_review_results: nextJuzReviewResults,
-      })
-      .eq("id", requestId);
+    const response = await fetch("/api/enrollment-requests", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "update-test-results",
+        requestId,
+        juzTestResults: nextJuzTestResults,
+        juzReviewResults: nextJuzReviewResults,
+      }),
+    });
 
-    if (error) {
-      throw error;
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(getReadableErrorMessage(payload?.error || payload));
     }
 
     setRequests((current) => current.map((request) => (
@@ -402,9 +411,12 @@ export default function EnrollmentRequestsPage() {
         return;
       }
 
-      const { error: deleteError } = await supabase.from("enrollment_requests").delete().eq("id", acceptRequest.id);
-      if (deleteError) {
-        console.error("Enrollment request delete error:", deleteError);
+      const deleteResponse = await fetch(`/api/enrollment-requests?id=${encodeURIComponent(acceptRequest.id)}`, {
+        method: "DELETE",
+      });
+      const deletePayload = await deleteResponse.json();
+      if (!deleteResponse.ok) {
+        console.error("Enrollment request delete error:", deletePayload);
         toast({ title: "تنبيه", description: "تم إنشاء الطالب ولكن تعذر حذف الطلب من القائمة", variant: "destructive" });
         return;
       }
@@ -446,14 +458,10 @@ export default function EnrollmentRequestsPage() {
 
   const fetchEnrollmentStatus = async () => {
     try {
-      const { data, error } = await supabase
-        .from('programs')
-        .select('is_active')
-        .eq('id', '00000000-0000-0000-0000-000000000000')
-        .maybeSingle();
-      
-      if (!error && data) {
-        setIsEnrollmentOpen(data.is_active);
+      const response = await fetch("/api/enrollment-requests", { cache: "no-store" });
+      const payload = await response.json();
+      if (response.ok && typeof payload.isEnrollmentOpen === "boolean") {
+        setIsEnrollmentOpen(payload.isEnrollmentOpen);
       }
     } catch (e) {
       console.error(e);
@@ -464,19 +472,14 @@ export default function EnrollmentRequestsPage() {
     setIsStatusLoading(true);
     const newStatus = !isEnrollmentOpen;
     try {
-      const { error } = await supabase
-        .from('programs')
-        .upsert({
-          id: '00000000-0000-0000-0000-000000000000',
-          name: 'ENROLLMENT_STATUS',
-          is_active: newStatus,
-          date: 'status',
-          duration: 'status',
-          points: 0,
-          description: 'ENROLLMENT_STATUS'
-        });
-        
-      if (!error) {
+      const response = await fetch("/api/enrollment-requests", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "toggle-status", isActive: newStatus }),
+      });
+      const payload = await response.json();
+
+      if (response.ok && payload?.success) {
         setIsEnrollmentOpen(newStatus);
         toast({ title: newStatus ? "تم فتح استقبال طلبات التسجيل" : "تم إغلاق طلبات التسجيل" });
       } else {
@@ -492,13 +495,16 @@ export default function EnrollmentRequestsPage() {
   const fetchRequests = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from("enrollment_requests")
-        .select("*")
-        .order("created_at", { ascending: false });
+      const response = await fetch("/api/enrollment-requests", { cache: "no-store" });
+      const payload = await response.json();
 
-      if (error) throw error;
-      setRequests((data || []).map((request: any) => ({
+      if (!response.ok) throw new Error(getReadableErrorMessage(payload?.error || payload));
+
+      if (typeof payload.isEnrollmentOpen === "boolean") {
+        setIsEnrollmentOpen(payload.isEnrollmentOpen);
+      }
+
+      setRequests(((payload.requests || []) as any[]).map((request: any) => ({
         ...request,
         selected_juzs: normalizeSelectedJuzs(request.selected_juzs),
         test_reviewed: Boolean(request.test_reviewed),
@@ -515,12 +521,11 @@ export default function EnrollmentRequestsPage() {
 
   const deleteRequest = async (id: string) => {
     try {
-      const { error } = await supabase
-        .from("enrollment_requests")
-        .delete()
-        .eq("id", id);
-        
-      if (error) throw error;
+      const response = await fetch(`/api/enrollment-requests?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(getReadableErrorMessage(payload?.error || payload));
       
       clearSavedTestResults(id);
       setRequests(requests.filter(req => req.id !== id));
@@ -549,12 +554,12 @@ export default function EnrollmentRequestsPage() {
         console.error("Enrollment reject WhatsApp error:", notificationError);
       }
 
-      const { error } = await supabase
-        .from("enrollment_requests")
-        .delete()
-        .eq("id", rejectRequest.id);
+      const response = await fetch(`/api/enrollment-requests?id=${encodeURIComponent(rejectRequest.id)}`, {
+        method: "DELETE",
+      });
+      const payload = await response.json();
 
-      if (error) throw error;
+      if (!response.ok) throw new Error(getReadableErrorMessage(payload?.error || payload));
 
       clearSavedTestResults(rejectRequest.id);
       setRequests(requests.filter(req => req.id !== rejectRequest.id));

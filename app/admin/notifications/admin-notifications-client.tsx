@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { supabase } from "@/lib/supabase-client"
 import { toast } from "@/hooks/use-toast"
 import { SiteLoader } from "@/components/ui/site-loader"
 import { Bell, Send, CheckSquare, Square, Users, GraduationCap, ShieldCheck, Search, Loader2 } from "lucide-react"
@@ -37,32 +36,33 @@ export default function AdminNotificationsClient() {
   const fetchUsers = async () => {
     try {
       setLoading(true)
-      
-      // Fetch teachers and admins from "users" table
-      const { data: usersData, error: usersError } = await supabase
-        .from("users")
-        .select("id, name, account_number, role, halaqah")
-        .order("name", { ascending: true })
-        .limit(10000)
 
-      if (usersError) throw usersError
+      const [adminsResponse, teachersResponse, studentsResponse] = await Promise.all([
+        fetch("/api/admin-users", { cache: "no-store" }),
+        fetch("/api/teachers", { cache: "no-store" }),
+        fetch("/api/students", { cache: "no-store" }),
+      ])
 
-      // Fetch students from "students" table
-      const { data: studentsData, error: studentsError } = await supabase
-        .from("students")
-        .select("id, name, account_number, halaqah")
-        .order("name", { ascending: true })
-        .limit(10000)
+      const [adminsPayload, teachersPayload, studentsPayload] = await Promise.all([
+        adminsResponse.json(),
+        teachersResponse.json(),
+        studentsResponse.json(),
+      ])
 
-      if (studentsError) throw studentsError
+      if (!adminsResponse.ok || !teachersResponse.ok || !studentsResponse.ok) {
+        throw new Error(
+          adminsPayload?.error || teachersPayload?.error || studentsPayload?.error || "تعذر تحميل المستخدمين",
+        )
+      }
 
-      // Map students data to match User interface
-      const formattedStudents = (studentsData || []).map(s => ({
+      const adminUsers = Array.isArray(adminsPayload.users) ? adminsPayload.users : []
+      const teacherUsers = Array.isArray(teachersPayload.teachers) ? teachersPayload.teachers : []
+      const formattedStudents = (Array.isArray(studentsPayload.students) ? studentsPayload.students : []).map(s => ({
         ...s,
         role: "student",
       }))
 
-      const allCombinedUsers = [...(usersData || []), ...formattedStudents]
+      const allCombinedUsers = [...adminUsers, ...teacherUsers, ...formattedStudents]
       setUsers(allCombinedUsers)
       
       const uniqueHalaqat = Array.from(new Set(allCombinedUsers.filter(u => u.role === "student" && u.halaqah).map(u => u.halaqah))).filter(Boolean) as string[]
@@ -91,7 +91,7 @@ export default function AdminNotificationsClient() {
     }
     
     if (searchQuery) {
-      return user.name.includes(searchQuery) || user.account_number.includes(searchQuery)
+      return user.name.includes(searchQuery) || String(user.account_number).includes(searchQuery)
     }
             return true
   })

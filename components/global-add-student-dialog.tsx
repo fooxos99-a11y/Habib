@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from "react"
 import { useRouter, useSearchParams, usePathname } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import {
   Dialog,
   DialogContent,
@@ -33,6 +32,7 @@ export function GlobalAddStudentDialog() {
   const [selectedCircleToAdd, setSelectedCircleToAdd] = useState("")
   const [circles, setCircles] = useState<any[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isLoadingCircles, setIsLoadingCircles] = useState(false)
 
   // Listen to searchParams to open dialog
   useEffect(() => {
@@ -45,16 +45,30 @@ export function GlobalAddStudentDialog() {
   }, [searchParams, pathname])
 
   const fetchCircles = async () => {
+    setIsLoadingCircles(true)
     try {
-      const supabase = createClient()
-      const { data, error } = await supabase.from("circles").select("*").order("created_at", { ascending: false })
-      if (!error && data) {
-        setCircles(data)
+      const response = await fetch("/api/circles", { cache: "no-store" })
+      const data = await response.json()
+      if (response.ok && data.circles) {
+        setCircles(data.circles)
+      } else {
+        setCircles([])
       }
     } catch (e) {
       console.error(e)
+      setCircles([])
+    } finally {
+      setIsLoadingCircles(false)
     }
   }
+
+  useEffect(() => {
+    if (!isOpen) {
+      return
+    }
+
+    void fetchCircles()
+  }, [isOpen])
 
   const handleClose = (open: boolean) => {
     if (!open) {
@@ -170,9 +184,9 @@ export function GlobalAddStudentDialog() {
             <label className="text-sm font-semibold text-[#1a2332]">الحلقة</label>
             <Select value={selectedCircleToAdd} onValueChange={setSelectedCircleToAdd}>
               <SelectTrigger className="rounded-xl border-[#3453a7]/40 focus:border-[#3453a7] h-10 text-sm">
-                <SelectValue placeholder="اختر الحلقة" />
+                <SelectValue placeholder={isLoadingCircles ? "جاري تحميل الحلقات..." : circles.length > 0 ? "اختر الحلقة" : "لا توجد حلقات متاحة"} />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent key={circles.map((circle) => String(circle.name)).join("|")}>
                 {circles.map((circle) => (
                   <SelectItem key={circle.name} value={circle.name}>
                     {circle.name}

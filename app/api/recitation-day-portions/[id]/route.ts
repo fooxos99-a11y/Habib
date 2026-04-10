@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { requireRoles } from "@/lib/auth/guards"
 import { getSiteSetting } from "@/lib/site-settings"
 import {
@@ -39,7 +39,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 
   const { id } = await context.params
   const body = await request.json()
-  const supabase = await createClient()
+  const supabase = createAdminClient()
   const gradingSettings = normalizeRecitationDayGradingSettings(
     await getSiteSetting(RECITATION_DAY_GRADING_SETTINGS_ID, DEFAULT_RECITATION_DAY_GRADING_SETTINGS_VALUE),
   )

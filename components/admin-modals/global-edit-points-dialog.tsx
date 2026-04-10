@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -47,20 +46,21 @@ export function GlobalEditPointsDialog() {
 
   const fetchData = async () => {
     try {
-      const supabase = createClient()
       const [circlesRes, studentsRes] = await Promise.all([
-        supabase.from("circles").select("id, name").order("created_at", { ascending: false }),
-        supabase.from("students").select("id, name, points, halaqah")
+        fetch("/api/circles", { cache: "no-store" }),
+        fetch("/api/students", { cache: "no-store" }),
       ])
-      
-      if (!circlesRes.error && circlesRes.data) setCircles(circlesRes.data)
-      if (studentsRes.error) {
-        console.error("Error fetching students for edit points:", studentsRes.error)
+      const circlesData = await circlesRes.json()
+      const studentsData = await studentsRes.json()
+
+      if (circlesRes.ok && circlesData.circles) setCircles(circlesData.circles)
+      if (!studentsRes.ok) {
+        console.error("Error fetching students for edit points:", studentsData.error)
       }
-      
-      if (!studentsRes.error && studentsRes.data) {
+
+      if (studentsRes.ok && studentsData.students) {
         const grouped: Record<string, Student[]> = {}
-        studentsRes.data.forEach((student) => {
+        studentsData.students.forEach((student: Student) => {
           const circleKey = getStudentCircleName(student)
           if (!grouped[circleKey]) grouped[circleKey] = []
           grouped[circleKey].push(student)

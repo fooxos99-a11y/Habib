@@ -57,6 +57,36 @@ const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 14
 const DAILY_CHALLENGE_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30
 let hasWarnedAboutDevelopmentSessionSecret = false
 
+function toDeterministicUuid(seed: string) {
+  const hash = crypto.createHash("sha256").update(seed).digest("hex")
+  const part1 = hash.slice(0, 8)
+  const part2 = hash.slice(8, 12)
+  const part3 = `4${hash.slice(13, 16)}`
+  const variant = (Number.parseInt(hash.slice(16, 18), 16) & 0x3f) | 0x80
+  const part4 = `${variant.toString(16).padStart(2, "0")}${hash.slice(18, 20)}`
+  const part5 = hash.slice(20, 32)
+
+  return `${part1}-${part2}-${part3}-${part4}-${part5}`
+}
+
+export function getDevelopmentBootstrapAdminId(accountNumber: string | number) {
+  return toDeterministicUuid(`qabas-dev-admin|${String(accountNumber).trim()}`)
+}
+
+export function normalizeSessionUserId(id: string, accountNumber?: string | null) {
+  const normalizedId = String(id || "").trim()
+  if (!normalizedId.startsWith("dev-admin-")) {
+    return normalizedId
+  }
+
+  const derivedAccountNumber = normalizedId.replace("dev-admin-", "").trim() || String(accountNumber || "").trim()
+  if (!derivedAccountNumber) {
+    return normalizedId
+  }
+
+  return getDevelopmentBootstrapAdminId(derivedAccountNumber)
+}
+
 function getDevelopmentSessionSecret() {
   const fingerprint = [process.cwd(), process.env.USERNAME || "unknown-user", process.env.COMPUTERNAME || "unknown-host"]
     .join("|")
@@ -122,6 +152,7 @@ export async function createSignedSessionToken(user: Omit<SessionUser, "issuedAt
   const expiresAt = issuedAt + SESSION_MAX_AGE_SECONDS
   const payload: SessionUser = {
     ...user,
+    id: normalizeSessionUserId(user.id, user.accountNumber),
     role: normalizedRole,
     issuedAt,
     expiresAt,
@@ -170,6 +201,7 @@ export async function verifySignedSessionToken(token?: string | null): Promise<S
 
     return {
       ...payload,
+      id: normalizeSessionUserId(payload.id, payload.accountNumber),
       role: normalizedRole,
     }
   } catch {

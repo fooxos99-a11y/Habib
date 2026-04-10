@@ -1,4 +1,5 @@
 import { normalizeWhatsAppPhoneNumber } from "@/lib/phone-number"
+import { requireRoles } from "@/lib/auth/guards"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
 
@@ -104,6 +105,11 @@ function pickOriginalMessage(
  */
 export async function GET(request: Request) {
   try {
+    const auth = await requireRoles(request, ["admin", "supervisor"])
+    if ("response" in auth) {
+      return auth.response
+    }
+
     const { searchParams } = new URL(request.url)
     const unreadOnly = searchParams.get("unread_only") === "true"
     const limit = parseInt(searchParams.get("limit") || "100")
@@ -247,6 +253,11 @@ export async function GET(request: Request) {
  */
 export async function PATCH(request: Request) {
   try {
+    const auth = await requireRoles(request, ["admin", "supervisor"])
+    if ("response" in auth) {
+      return auth.response
+    }
+
     const body = await request.json()
     const replyId = body.replyId || body.id
     const isRead = typeof body.isRead === "boolean" ? body.isRead : body.is_read
@@ -295,6 +306,11 @@ export async function PATCH(request: Request) {
  */
 export async function DELETE(request: Request) {
   try {
+    const auth = await requireRoles(request, ["admin", "supervisor"])
+    if ("response" in auth) {
+      return auth.response
+    }
+
     const body = await request.json().catch(() => ({}))
     const replyId = body.replyId || body.id
 

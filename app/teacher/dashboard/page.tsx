@@ -68,12 +68,22 @@ export default function TeacherDashboard() {
     )
   }
 
+  const teacherCircle = String(teacherData?.halaqah || "").trim()
+  const hasAssignedCircle = teacherCircle.length > 0
+
   return (
     <>
       <Header />
       <main className="flex-1 py-4 md:py-8 lg:py-12 px-3 md:px-4">
         <div className="container mx-auto max-w-7xl">
           <div className="space-y-4 md:space-y-6">
+            {!hasAssignedCircle ? (
+              <Card className="border-2 border-amber-200 bg-amber-50/70 shadow-lg">
+                <CardContent className="pt-4 md:pt-6 text-center text-sm md:text-base font-semibold text-amber-900">
+                  لا توجد حلقة مرتبطة بهذا المعلم حاليًا.
+                </CardContent>
+              </Card>
+            ) : null}
             <Card className="border-2 border-[#3453a7]/20 shadow-lg">
               <CardContent className="pt-4 md:pt-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
@@ -98,7 +108,7 @@ export default function TeacherDashboard() {
                   <div className="space-y-2">
                     <label className="text-xs md:text-sm font-semibold text-[#1a2332]/70">الحلقة</label>
                     <div className="p-3 md:p-4 bg-gray-50 rounded-xl text-base md:text-lg font-bold text-[#1a2332]">
-                      {teacherData?.halaqah || "-"}
+                      {teacherCircle || "بدون حلقة"}
                     </div>
                   </div>
                   <div className="space-y-2">

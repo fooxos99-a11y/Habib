@@ -1,12 +1,17 @@
-import { createClient } from "@/lib/supabase/server"
+import { requireRoles } from "@/lib/auth/guards"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
 
 // جدول الرسائل الجاهزة: whatsapp_ready_messages
 // الحقل: text
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const supabase = await createClient()
+    const auth = await requireRoles(request, ["admin", "supervisor"])
+    if ("response" in auth) {
+      return auth.response
+    }
+    const supabase = createAdminClient()
     const { data, error } = await supabase
       .from("whatsapp_ready_messages")
       .select("*")
@@ -20,7 +25,11 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient()
+    const auth = await requireRoles(request, ["admin", "supervisor"])
+    if ("response" in auth) {
+      return auth.response
+    }
+    const supabase = createAdminClient()
     const { text } = await request.json()
     const { data, error } = await supabase
       .from("whatsapp_ready_messages")
@@ -36,7 +45,11 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const supabase = await createClient()
+    const auth = await requireRoles(request, ["admin", "supervisor"])
+    if ("response" in auth) {
+      return auth.response
+    }
+    const supabase = createAdminClient()
     const { id } = await request.json()
     const { error } = await supabase
       .from("whatsapp_ready_messages")

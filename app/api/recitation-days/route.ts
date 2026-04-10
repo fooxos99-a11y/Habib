@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { requireRoles } from "@/lib/auth/guards"
 import { insertNotificationsAndSendPush } from "@/lib/push-notifications"
 import {
@@ -36,13 +36,15 @@ type LifecycleRecipient = {
   guardian_phone?: string | null
 }
 
+type RecitationSupabase = ReturnType<typeof createAdminClient>
+
 function normalizeHalaqahScope(value: unknown) {
   const normalizedValue = String(value || "").trim()
   return normalizedValue && normalizedValue !== "all" ? normalizedValue : null
 }
 
 async function sendLifecycleNotifications(params: {
-  supabase: Awaited<ReturnType<typeof createClient>>
+  supabase: RecitationSupabase
   phase: "start" | "end"
   recipients: LifecycleRecipient[]
   sessionUserId: string
@@ -118,7 +120,7 @@ function formatRecitationDateRange(startDate: string, endDate?: string | null) {
     : `من ${normalizedStartDate} إلى ${normalizedEndDate}`
 }
 
-async function loadDayDetails(supabase: Awaited<ReturnType<typeof createClient>>, dayId: string) {
+async function loadDayDetails(supabase: RecitationSupabase, dayId: string) {
   const { data: day, error: dayError } = await supabase
     .from("recitation_days")
     .select("*")
@@ -189,7 +191,7 @@ export async function GET(request: Request) {
       return auth.response
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { searchParams } = new URL(request.url)
     const mode = searchParams.get("mode") || "current"
 
@@ -255,7 +257,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "تاريخ النهاية يجب أن يكون مساويًا أو بعد تاريخ البداية" }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { data: existingOpenDay } = await supabase
       .from("recitation_days")
       .select("id")
@@ -394,7 +396,7 @@ export async function PATCH(request: Request) {
 
     const body = await request.json().catch(() => ({}))
     const targetHalaqah = normalizeHalaqahScope(body?.halaqah)
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { data: openDay, error } = await supabase
       .from("recitation_days")
       .select("id, recitation_date, recitation_end_date")

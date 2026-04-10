@@ -384,7 +384,7 @@ export default function TeacherManagement() {
                               {teacher.role === "deputy_teacher" ? "نائب معلم" : "معلم"}
                             </span>
                           </div>
-                          <p className="text-xs text-neutral-400 mt-0.5">{teacher.halaqah}</p>
+                          <p className="text-xs text-neutral-400 mt-0.5">{(teacher.halaqah || "بدون حلقة").trim() || "بدون حلقة"}</p>
                         </div>
                       </div>
 

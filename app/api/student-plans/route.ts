@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
 import { ensureStudentAccess, requireRoles } from "@/lib/auth/guards"
 import {
@@ -535,7 +535,7 @@ export async function GET(request: Request) {
     }
 
     const { session } = auth
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const activeSemester = await getOrCreateActiveSemester(supabase)
     const { searchParams } = new URL(request.url)
     const studentId = searchParams.get("student_id")
@@ -770,7 +770,7 @@ export async function POST(request: Request) {
     }
 
     const { session } = auth
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const activeSemester = await getOrCreateActiveSemester(supabase)
     const body = await request.json()
     const {
@@ -1143,7 +1143,7 @@ export async function DELETE(request: Request) {
     }
 
     const { session } = auth
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const activeSemester = await getOrCreateActiveSemester(supabase)
     const { searchParams } = new URL(request.url)
     const planId = searchParams.get("plan_id")

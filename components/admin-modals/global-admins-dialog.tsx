@@ -11,7 +11,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { UserPlus, Shield, PlusCircle, Trash2, Settings, Plus } from 'lucide-react'
-import { createClient } from "@/lib/supabase/client"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
 
 interface UserEntry {
@@ -74,19 +73,10 @@ export function GlobalAdminsDialog() {
   const fetchData = async () => {
     setIsLoading(true)
     try {
-      const supabase = createClient()
-      const { data, error } = await supabase
-        .from("users")
-        .select("id, name, account_number, phone_number, id_number, role")
-        .order("account_number", { ascending: true })
-
-      if (error) throw error
-
-      const excludedRoles = new Set(["student", "teacher", "deputy_teacher", "طالب", "معلم", "نائب معلم"])
-      const usersData = (data || []).filter(
-        (user) => !excludedRoles.has(user.role || "") && user.account_number !== 2,
-      ) as UserEntry[]
-      setUsers(usersData)
+      const usersRes = await fetch("/api/admin-users", { cache: "no-store" })
+      const usersData = await usersRes.json()
+      if (!usersRes.ok) throw new Error(usersData.error || "تعذر تحميل الإداريين")
+      setUsers((usersData.users || []) as UserEntry[])
 
       const rolesRes = await fetch("/api/roles")
       const rolesData = await rolesRes.json()
@@ -183,17 +173,19 @@ export function GlobalAdminsDialog() {
 
     setIsSubmitting(true)
     try {
-      const supabase = createClient()
-      const { error } = await supabase.from("users").insert({
-        name: newAdmin.name,
-        account_number: Number.parseInt(newAdmin.account_number),
-        phone_number: newAdmin.phone_number || null,
-        id_number: newAdmin.id_number || null,
-        role: newAdmin.role,
-        halaqah: ""
+      const response = await fetch("/api/admin-users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newAdmin.name,
+          account_number: newAdmin.account_number,
+          phone_number: newAdmin.phone_number || null,
+          id_number: newAdmin.id_number || null,
+          role: newAdmin.role,
+        }),
       })
-
-      if (error) throw error
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || "حدث خطأ أثناء الإضافة")
 
       toast({ title: "نجاح", description: "تم إضافة المستخدم بنجاح" })
       setNewAdmin({ name: "", account_number: "", phone_number: "", id_number: "", role: roles[0] || "سكرتير" })
@@ -208,9 +200,9 @@ export function GlobalAdminsDialog() {
 
   const handleDeleteUser = async (userId: string) => {
     try {
-      const supabase = createClient()
-      const { error } = await supabase.from("users").delete().eq("id", userId)
-      if (error) throw error
+      const response = await fetch(`/api/admin-users?id=${userId}`, { method: "DELETE" })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || "فشل في حذف المستخدم")
       toast({ title: "تم الحذف", description: "تم حذف المستخدم بنجاح" })
       setUsers(users.filter(u => u.id !== userId))
     } catch {
@@ -220,9 +212,13 @@ export function GlobalAdminsDialog() {
 
   const handleChangeRole = async (userId: string, newRole: string) => {
     try {
-      const supabase = createClient()
-      const { error } = await supabase.from("users").update({ role: newRole }).eq("id", userId)
-      if (error) throw error
+      const response = await fetch("/api/admin-users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: userId, role: newRole }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || "فشل في تحديث المسمى الوظيفي")
 
       toast({ title: "نجاح", description: "تم تحديث المسمى الوظيفي بنجاح" })
       setUsers(users.map(u => u.id === userId ? { ...u, role: newRole } : u))

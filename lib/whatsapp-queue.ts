@@ -6,6 +6,42 @@ type SupabaseLike = {
   from: (table: string) => any
 }
 
+async function insertWhatsAppHistory(adminSupabase: ReturnType<typeof createAdminClient>, payload: {
+  id: string
+  phone_number: string
+  message_text: string
+  status: string
+  sent_by: string | null
+  sent_at: null
+}) {
+  const { error } = await adminSupabase
+    .from("whatsapp_messages")
+    .insert(payload)
+
+  if (!error) {
+    return
+  }
+
+  if (error.code === "42P01") {
+    return
+  }
+
+  if (error.code !== "23503" && error.code !== "22P02") {
+    throw error
+  }
+
+  const { error: fallbackError } = await adminSupabase
+    .from("whatsapp_messages")
+    .insert({
+      ...payload,
+      sent_by: null,
+    })
+
+  if (fallbackError && fallbackError.code !== "42P01") {
+    throw fallbackError
+  }
+}
+
 export async function enqueueWhatsAppMessage(supabase: SupabaseLike, params: {
   phoneNumber?: string | null
   message?: string | null
@@ -63,20 +99,14 @@ export async function enqueueWhatsAppMessage(supabase: SupabaseLike, params: {
     throw queueError
   }
 
-  const { error: historyError } = await adminSupabase
-    .from("whatsapp_messages")
-    .insert({
-      id,
-      phone_number: normalizedPhone,
-      message_text: trimmedMessage,
-      status: "pending",
-      sent_by: params.userId || null,
-      sent_at: null,
-    })
-
-  if (historyError && historyError.code !== "42P01") {
-    throw historyError
-  }
+  await insertWhatsAppHistory(adminSupabase, {
+    id,
+    phone_number: normalizedPhone,
+    message_text: trimmedMessage,
+    status: "pending",
+    sent_by: params.userId || null,
+    sent_at: null,
+  })
 
   return { queued: true, id }
 }

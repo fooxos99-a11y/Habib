@@ -9,7 +9,7 @@ import {
 } from "@/lib/pathway-notification-templates"
 import { insertNotificationsAndSendPush } from "@/lib/push-notifications"
 import { getSiteSetting } from "@/lib/site-settings"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 
 function getErrorMessage(error: unknown) {
   if (!error) return "حدث خطأ غير معروف"
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "بيانات المستوى غير مكتملة" }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { data: level, error: levelError } = await supabase
       .from("pathway_levels")
       .select("id, level_number, title, halaqah")

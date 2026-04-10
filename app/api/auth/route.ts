@@ -1,13 +1,63 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import {
   createSignedSessionToken,
+  getDevelopmentBootstrapAdminId,
   getClearedSessionCookieOptions,
   getSessionCookieOptions,
   getSessionFromCookieHeader,
   normalizeAppRole,
   SESSION_COOKIE_NAME,
 } from "@/lib/auth/session"
+
+function createAuthSuccessResponse(user: {
+  id: string
+  name: string
+  role: "student" | "teacher" | "deputy_teacher" | "admin" | "supervisor"
+  accountNumber: string | number
+  halaqah?: string
+}) {
+  return createSignedSessionToken({
+    id: user.id,
+    name: user.name,
+    role: user.role,
+    accountNumber: String(user.accountNumber),
+    halaqah: user.halaqah || "",
+  }).then(({ token, expiresAt }) => {
+    const response = NextResponse.json({
+      success: true,
+      user: {
+        id: user.id,
+        name: user.name,
+        role: user.role,
+        accountNumber: user.accountNumber,
+        halaqah: user.halaqah || "",
+      },
+    })
+
+    response.cookies.set(SESSION_COOKIE_NAME, token, getSessionCookieOptions(expiresAt))
+    return response
+  })
+}
+
+function getDevelopmentBootstrapAdmin(accountNumber: number) {
+  if (process.env.NODE_ENV === "production") {
+    return null
+  }
+
+  const bootstrapAccountNumber = Number.parseInt(process.env.DEV_ADMIN_ACCOUNT_NUMBER || "", 10)
+  if (!bootstrapAccountNumber || bootstrapAccountNumber !== accountNumber) {
+    return null
+  }
+
+  return {
+    id: getDevelopmentBootstrapAdminId(bootstrapAccountNumber),
+    name: process.env.DEV_ADMIN_NAME || "صالح السويد",
+    role: "admin" as const,
+    accountNumber: bootstrapAccountNumber,
+    halaqah: "",
+  }
+}
 
 export async function GET(request: NextRequest) {
   const session = await getSessionFromCookieHeader(request.headers.get("cookie"))
@@ -32,7 +82,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "رقم الحساب غير صحيح" }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const bootstrapAdmin = getDevelopmentBootstrapAdmin(accountNum)
+    if (bootstrapAdmin) {
+      return createAuthSuccessResponse(bootstrapAdmin)
+    }
+
+    const supabase = createAdminClient()
 
     const { data: user, error: userError } = await supabase
       .from("users")
@@ -51,28 +106,13 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "الدور الوظيفي لهذا الحساب غير مدعوم" }, { status: 403 })
       }
 
-      const sessionData = {
+      return createAuthSuccessResponse({
         id: String(user.id),
         name: user.name,
         role: normalizedRole,
-        accountNumber: String(user.account_number),
+        accountNumber: user.account_number,
         halaqah: user.halaqah || "",
-      } as const
-
-      const { token, expiresAt } = await createSignedSessionToken(sessionData)
-      const response = NextResponse.json({
-        success: true,
-        user: {
-          id: sessionData.id,
-          name: user.name,
-          role: normalizedRole,
-          accountNumber: user.account_number,
-          halaqah: user.halaqah,
-        },
       })
-
-      response.cookies.set(SESSION_COOKIE_NAME, token, getSessionCookieOptions(expiresAt))
-      return response
     }
 
     const { data: student, error: studentError } = await supabase
@@ -86,28 +126,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (student) {
-      const sessionData = {
+      return createAuthSuccessResponse({
         id: String(student.id),
         name: student.name,
-        role: "student" as const,
-        accountNumber: String(student.account_number),
+        role: "student",
+        accountNumber: student.account_number,
         halaqah: student.halaqah || "",
-      }
-
-      const { token, expiresAt } = await createSignedSessionToken(sessionData)
-      const response = NextResponse.json({
-        success: true,
-        user: {
-          id: sessionData.id,
-          name: student.name,
-          role: "student",
-          accountNumber: student.account_number,
-          halaqah: student.halaqah,
-        },
       })
-
-      response.cookies.set(SESSION_COOKIE_NAME, token, getSessionCookieOptions(expiresAt))
-      return response
     }
 
     return NextResponse.json({ error: "رقم الحساب غير صحيح" }, { status: 401 })

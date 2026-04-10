@@ -136,6 +136,25 @@ function writeCachedText(key: string, value: string | null) {
   } catch {}
 }
 
+function getHeaderRoleLabel(role: string | null, isAdmin: boolean, accountNumber: number | null) {
+  if (isAdmin) {
+    if (accountNumber === 2 || role === "admin") {
+      return "مدير"
+    }
+
+    if (role === "supervisor") {
+      return "مشرف"
+    }
+
+    return role || "مشرف"
+  }
+
+  if (role === "teacher") return "معلم"
+  if (role === "deputy_teacher") return "نائب معلم"
+  if (role === "student") return "طالب"
+  return ""
+}
+
 function NavItem({
   icon: Icon,
 
@@ -242,42 +261,6 @@ function SectionHeader({ title }: { title: string }) {
           {title}
       </p>
     </div>
-  );
-}
-
-function HeaderLogo({
-  onClick,
-  wrapperClassName,
-  logoClassName,
-}: {
-  onClick: () => void;
-  wrapperClassName?: string;
-  logoClassName?: string;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label="الصفحة الرئيسية"
-      onClick={onClick}
-      className={wrapperClassName}
-    >
-      <div
-        role="img"
-        aria-label="مجمع الحبيِّب لتحفيظ القرآن الكريم"
-        className={logoClassName}
-        style={{
-          backgroundColor: "#ffffff",
-          WebkitMaskImage: 'url("/loogo1.png")',
-          maskImage: 'url("/loogo1.png")',
-          WebkitMaskRepeat: "no-repeat",
-          maskRepeat: "no-repeat",
-          WebkitMaskPosition: "center",
-          maskPosition: "center",
-          WebkitMaskSize: "contain",
-          maskSize: "contain",
-        }}
-      />
-    </button>
   );
 }
 
@@ -405,6 +388,8 @@ export function Header() {
   const [whatsAppStatus, setWhatsAppStatus] = useState<WhatsAppStatusSummary | null>(null);
   const [isWhatsAppQrDialogOpen, setIsWhatsAppQrDialogOpen] = useState(false);
 
+  const canUseDirectNotificationQueries = userRole === "student";
+
   const isAdmin = userAccountNumber === 2 || validAdminRoles.includes(userRole || "");
 
   const isFullAccess = userAccountNumber === 2 || userRole === "admin" || userRole === "مدير" || userPermissions.includes("all");
@@ -416,6 +401,11 @@ export function Header() {
   const confirmDialog = useConfirmDialog();
 
   const fetchNotificationStartAt = async (accountNumber: string) => {
+    if (!canUseDirectNotificationQueries) {
+      setNotificationStartAt(null);
+      return null;
+    }
+
     const cacheKey = `notificationStartAt_${accountNumber}`;
     const cachedCreatedAt = readCachedText(cacheKey, NOTIFICATION_START_AT_CACHE_DURATION);
     if (cachedCreatedAt !== null) {
@@ -540,6 +530,10 @@ export function Header() {
     syncDailyChallengePlayedStatus();
     const fetchUnread = async () => {
       if (!accNumStr) return;
+      if (role !== "student") {
+        setUnreadCount(0);
+        return;
+      }
       try {
         const createdAt = await fetchNotificationStartAt(accNumStr);
         const supabase = createClient();
@@ -555,12 +549,18 @@ export function Header() {
         setUnreadCount(count || 0);
       } catch {}
     };
-    fetchUnread();
+    if (role === "student") {
+      fetchUnread();
+    }
     const unreadIntervalId = window.setInterval(() => {
-      void fetchUnread();
+      if (role === "student") {
+        void fetchUnread();
+      }
     }, 30000);
     const handleUnreadRefresh = () => {
-      void fetchUnread();
+      if (role === "student") {
+        void fetchUnread();
+      }
     };
     window.addEventListener("focus", handleUnreadRefresh);
 
@@ -677,15 +677,14 @@ export function Header() {
 
   const verifyFreshRole = async (accountNumber: string) => {
     try {
-      const supabase = createClient();
-      const { data } = await supabase
-        .from("users")
-        .select("role")
-        .eq("account_number", Number(accountNumber))
-        .single();
+      const authResponse = await fetch("/api/auth", { cache: "no-store" });
+      if (!authResponse.ok) {
+        return;
+      }
 
-      if (!data) return;
-      const freshRole = data.role || "";
+      const authData = await authResponse.json();
+      const freshRole = String(authData?.user?.role || "");
+      if (!freshRole) return;
 
       // Fetch valid admin roles dynamically from API
       let freshAdminRoles = [
@@ -934,6 +933,15 @@ export function Header() {
     scrollToTop();
   };
 
+  const goToHome = () => {
+    if (!isLoggedIn) {
+      handleNav("/");
+      return;
+    }
+
+    goToProfile();
+  };
+
   const deleteNotification = async (id: string) => {
     try {
       const supabase = createClient();
@@ -967,15 +975,7 @@ export function Header() {
 
   const shouldShowNotificationIndicator = isNotificationIndicatorEligible && notificationPermission !== "granted" && notificationPermission !== "unsupported";
 
-  const roleLabel = isAdmin
-    ? (userAccountNumber === 2 ? "مدير" : (userRole || "مشرف"))
-    : userRole === "teacher"
-      ? "معلم"
-      : userRole === "deputy_teacher"
-        ? "نائب معلم"
-        : userRole === "student"
-        ? "طالب"
-        : "";
+  const roleLabel = getHeaderRoleLabel(userRole, isAdmin, userAccountNumber);
 
   const isStudentHeaderStatsReady =
     authResolved &&
@@ -1180,14 +1180,6 @@ export function Header() {
         <div className="container mx-auto px-4 h-20 flex items-center justify-between relative">
           <div className="w-[40px] z-20 shrink-0" />
 
-          <div className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 z-10">
-            <HeaderLogo
-              onClick={() => handleNav("/")}
-              wrapperClassName="cursor-pointer"
-              logoClassName="w-24 md:w-28 aspect-[5625/4500]"
-            />
-          </div>
-
           <div className="absolute left-4 top-1/2 z-20 flex -translate-y-1/2 items-center gap-2">
             {isLoggedIn && userRole !== "student" && (
               <>
@@ -1214,7 +1206,7 @@ export function Header() {
                     <button
                       type="button"
                       onClick={() => setIsNotificationPromptOpen(true)}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#fff7ed] text-[14px] font-black text-[#f97316] shadow-[0_0_0_3px_rgba(249,115,22,0.14)]"
+                      className="inline-flex items-center justify-center px-1 text-[18px] font-black leading-none text-[#f97316]"
                       aria-label="تفعيل إشعارات الجوال"
                     >
                       !
@@ -1224,6 +1216,16 @@ export function Header() {
                     if (!open) return;
                     const accNumStr = localStorage.getItem("accountNumber");
                     if (!accNumStr) return;
+                    if (!canUseDirectNotificationQueries) {
+                      setNotifications([]);
+                      setUnreadCount(0);
+                      return;
+                    }
+                    if (!canUseDirectNotificationQueries) {
+                      setNotifications([]);
+                      setUnreadCount(0);
+                      return;
+                    }
                     setNotifLoading(true);
                     try {
                       const supabase = createClient();
@@ -1356,13 +1358,8 @@ export function Header() {
           className="px-4 pt-2.5 pb-3 flex-shrink-0"
           style={{ background: "linear-gradient(135deg, #0f2f6d 0%, #1f4d9a 55%, #3667b2 100%)" }}
         >
-          {/* الصف العلوي: اللوغو + إغلاق */}
-          <div className="flex items-start justify-between mb-2">
-            <HeaderLogo
-              onClick={() => handleNav("/")}
-              wrapperClassName="cursor-pointer translate-x-5 -translate-y-2"
-              logoClassName="w-24 aspect-[5625/4500]"
-            />
+          {/* الصف العلوي: إغلاق */}
+          <div className="mb-2 flex items-start justify-start">
             <button
               onClick={() => setIsMobileMenuOpen(false)}
               className="flex items-center justify-center self-start translate-y-1.5 transition-all duration-200 active:scale-90 hover:opacity-70"
@@ -1455,7 +1452,7 @@ export function Header() {
             <NavItem
               icon={Home}
               label="الرئيسية"
-              onClick={() => handleNav("/")}
+              onClick={goToHome}
             />
 
             <NavItem

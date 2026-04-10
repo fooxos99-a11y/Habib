@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin"
+import { requireRoles } from "@/lib/auth/guards"
 import { normalizeWhatsAppPhoneNumber } from "@/lib/phone-number"
 import { isWhatsAppWorkerReady, readWhatsAppWorkerStatus } from "@/lib/whatsapp-worker-status"
 
@@ -17,6 +18,47 @@ type BulkQueueRecipientInput = {
   message?: string | null
 }
 
+async function insertWhatsAppHistoryRows(
+  supabase: ReturnType<typeof createAdminClient>,
+  rows: Array<{
+    id: string
+    phone_number: string
+    message_text: string
+    status: string
+    sent_by: string | null
+    sent_at: null
+  }>,
+) {
+  if (rows.length === 0) {
+    return
+  }
+
+  const { error } = await supabase
+    .from("whatsapp_messages")
+    .insert(rows)
+
+  if (!error || error.code === "42P01") {
+    return
+  }
+
+  if (error.code !== "23503" && error.code !== "22P02") {
+    throw error
+  }
+
+  const fallbackRows = rows.map((row) => ({
+    ...row,
+    sent_by: null,
+  }))
+
+  const { error: fallbackError } = await supabase
+    .from("whatsapp_messages")
+    .insert(fallbackRows)
+
+  if (fallbackError && fallbackError.code !== "42P01") {
+    throw fallbackError
+  }
+}
+
 /**
  * Queue-based WhatsApp Send Endpoint
  * POST /api/whatsapp/send
@@ -24,8 +66,13 @@ type BulkQueueRecipientInput = {
  */
 export async function POST(request: Request) {
   try {
+    const auth = await requireRoles(request, ["admin", "supervisor"])
+    if ("response" in auth) {
+      return auth.response
+    }
+
     const body = await request.json()
-    const { phoneNumber, message, userId, recipients } = body
+    const { phoneNumber, message, recipients } = body
     const normalizedMessage = typeof message === "string" ? message.trim() : ""
     const workerStatus = await readWhatsAppWorkerStatus()
 
@@ -58,6 +105,7 @@ export async function POST(request: Request) {
       const bulkResult = await enqueueMessagesBulk({
         message: normalizedMessage,
         recipients,
+        sentByUserId: auth.session.id,
       })
 
       return NextResponse.json({
@@ -82,7 +130,7 @@ export async function POST(request: Request) {
       id: crypto.randomUUID(),
       phoneNumber: normalizeWhatsAppPhoneNumber(phoneNumber),
       message: normalizedMessage,
-      userId,
+      userId: auth.session.id,
     })
 
     return NextResponse.json({
@@ -123,16 +171,16 @@ async function enqueueMessage(data: QueueMessageInput) {
     throw new Error("فشل في إضافة الرسالة إلى طابور واتساب")
   }
 
-  const { error: historyError } = await supabase.from("whatsapp_messages").insert({
-    id: data.id,
-    phone_number: data.phoneNumber,
-    message_text: data.message,
-    status: "pending",
-    sent_by: data.userId,
-    sent_at: null,
-  })
-
-  if (historyError) {
+  try {
+    await insertWhatsAppHistoryRows(supabase, [{
+      id: data.id,
+      phone_number: data.phoneNumber,
+      message_text: data.message,
+      status: "pending",
+      sent_by: data.userId || null,
+      sent_at: null,
+    }])
+  } catch (historyError) {
     console.error("[WhatsApp History] Error saving message history:", historyError)
   }
 
@@ -142,6 +190,7 @@ async function enqueueMessage(data: QueueMessageInput) {
 async function enqueueMessagesBulk(params: {
   message: string
   recipients: BulkQueueRecipientInput[]
+  sentByUserId: string
 }) {
   const supabase = createAdminClient()
   const queueRows: Array<{ id: string; phone_number: string; message: string; status: string }> = []
@@ -190,7 +239,7 @@ async function enqueueMessagesBulk(params: {
       phone_number: normalizedPhone,
       message_text: resolvedMessage,
       status: "pending",
-      sent_by: recipient.userId ? String(recipient.userId) : null,
+      sent_by: params.sentByUserId,
       sent_at: null,
     })
   }
@@ -205,11 +254,9 @@ async function enqueueMessagesBulk(params: {
       throw new Error("فشل في إضافة الرسائل إلى طابور واتساب")
     }
 
-    const { error: historyError } = await supabase
-      .from("whatsapp_messages")
-      .insert(historyRows)
-
-    if (historyError) {
+    try {
+      await insertWhatsAppHistoryRows(supabase, historyRows)
+    } catch (historyError) {
       console.error("[WhatsApp History] Error bulk saving message history:", historyError)
     }
   }
@@ -226,10 +273,13 @@ async function enqueueMessagesBulk(params: {
  * GET /api/whatsapp/send
  * الحصول على قائمة الرسائل المرسلة
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const { createClient } = await import("@/lib/supabase/server")
-    const supabase = await createClient()
+    const auth = await requireRoles(request, ["admin", "supervisor"])
+    if ("response" in auth) {
+      return auth.response
+    }
+    const supabase = createAdminClient()
 
     const { data: messages, error } = await supabase
       .from("whatsapp_messages")

@@ -3,7 +3,6 @@
 import React, { useEffect, useState } from "react"
 import * as XLSX from "xlsx"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -207,14 +206,16 @@ export function GlobalBulkAddStudentDialog() {
   const [isBulkSubmitting, setIsBulkSubmitting] = useState(false)
 
   useEffect(() => {
-    fetchCircles()
+    void fetchCircles()
   }, [])
 
   const fetchCircles = async () => {
     try {
-      const supabase = createClient()
-      const { data, error } = await supabase.from("circles").select("*").order("created_at", { ascending: false })
-      if (!error && data) setCircles(data)
+      const response = await fetch("/api/circles", { cache: "no-store" })
+      const data = await response.json()
+      if (response.ok && Array.isArray(data.circles)) {
+        setCircles(data.circles)
+      }
     } catch (e) { console.error(e) }
   }
 

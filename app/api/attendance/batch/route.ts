@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { getAbsenceNotificationTemplates, syncAbsenceNotification } from "@/lib/absence-notifications"
 import {
   buildHafizAmountLabel,
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const activeSemester = await getOrCreateActiveSemester(supabase)
     const absenceTemplates = await getAbsenceNotificationTemplates(supabase)
     const attendanceTemplates = await loadAttendanceSaveGuardianTemplates()

@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { ensureStudentAccess, ensureTeacherScope, isTeacherRole, requireRoles } from "@/lib/auth/guards"
 import { getAbsenceNotificationTemplates, syncAbsenceNotification } from "@/lib/absence-notifications"
 import { buildHafizAmountLabel, sendAttendanceSaveGuardianNotification } from "@/lib/attendance-save-notifications"
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams
     const studentId = searchParams.get("student_id")
     const halaqah = searchParams.get("halaqah")
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     if (halaqah) {
       if (session.role === "student") {
@@ -218,7 +218,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const activeSemester = await getOrCreateActiveSemester(supabase)
     const studentAccess = await ensureStudentAccess(supabase, session, student_id)
     if ("response" in studentAccess) {

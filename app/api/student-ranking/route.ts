@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
 import { ensureStudentAccess, requireRoles } from "@/lib/auth/guards"
 
@@ -10,7 +10,7 @@ export async function GET(request: Request) {
     }
 
     const { session } = auth
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { searchParams } = new URL(request.url)
     const studentId = searchParams.get("student_id")
 

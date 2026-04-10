@@ -4,7 +4,7 @@ import { requireRoles } from "@/lib/auth/guards"
 import { DEFAULT_ACTIVE_SEMESTER_NAME, getActiveSemester, getOrCreateActiveSemester, isMissingSemestersTable, isNoActiveSemesterError } from "@/lib/semesters"
 import { buildSemesterArchiveData, getSemesterSnapshot } from "@/lib/semester-archive"
 import { getSaudiDateString } from "@/lib/saudi-time"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 
 function getErrorMessage(error: unknown) {
   if (!error) return "حدث خطأ غير معروف"
@@ -32,7 +32,7 @@ export async function GET(request: Request) {
       return auth.response
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const activeSemester = await getActiveSemester(supabase)
     const { searchParams } = new URL(request.url)
     const semesterId = String(searchParams.get("semester_id") || "").trim()
@@ -326,7 +326,7 @@ export async function POST(request: Request) {
       return auth.response
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const body = await request.json()
     const name = String(body.name || "").trim() || DEFAULT_ACTIVE_SEMESTER_NAME
     const startDate = String(body.start_date || "").trim() || getSaudiDateString()
@@ -381,7 +381,7 @@ export async function DELETE(request: Request) {
       return auth.response
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const activeSemester = await getActiveSemester(supabase)
     const { searchParams } = new URL(request.url)
     const semesterId = String(searchParams.get("semester_id") || "").trim()

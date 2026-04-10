@@ -40,6 +40,16 @@ export function isWebPushServiceUnavailableError(error: unknown) {
     || message.includes("registration failed")
 }
 
+export function isWebPushInvalidApplicationServerKeyError(error: unknown) {
+  const name = String((error as { name?: string } | null)?.name || "").toLowerCase()
+  const message = String((error as { message?: string } | null)?.message || error || "").toLowerCase()
+
+  return name === "invalidaccesserror"
+    || message.includes("applicationserverkey is not valid")
+    || message.includes("application server key is not valid")
+    || message.includes("provided applicationserverkey is not valid")
+}
+
 export type WebPushSyncResult = {
   configured: boolean
   subscribed: boolean
@@ -138,6 +148,13 @@ export async function syncWebPushSubscription(): Promise<WebPushSyncResult> {
         applicationServerKey: urlBase64ToUint8Array(String(config.publicKey)),
       })
     } catch (error) {
+      if (isWebPushInvalidApplicationServerKeyError(error)) {
+        storeDiagnosticError("مفتاح Web Push العام غير صالح أو لم يتم ضبطه بشكل صحيح على الخادم")
+        localStorage.setItem(enabledAtKey, new Date().toISOString())
+        localStorage.removeItem(NOTIFIED_IDS_KEY)
+        return { configured: false, subscribed: false }
+      }
+
       if (isWebPushPermissionDeniedError(error)) {
         storeDiagnosticError("تم رفض إذن الإشعارات من إعدادات الجهاز أو المتصفح")
         return { configured: true, subscribed: false, permissionDenied: true }

@@ -14,6 +14,22 @@ import {
   unregisterWebPushSubscription,
 } from "@/lib/push-subscription-client"
 
+function getPostLoginRoute(role: string) {
+  if (role === "teacher" || role === "deputy_teacher") {
+    return "/teacher/dashboard"
+  }
+
+  if (role === "student") {
+    return "/profile"
+  }
+
+  if (role === "admin" || role === "supervisor") {
+    return "/admin/profile"
+  }
+
+  return "/"
+}
+
 export function LoginForm() {
   const [accountNumber, setAccountNumber] = useState("")
   const [error, setError] = useState("")
@@ -105,8 +121,9 @@ export function LoginForm() {
         }
 
         setIsSuccess(true)
+        const targetRoute = getPostLoginRoute(data.user.role)
         setTimeout(() => {
-          router.push("/")
+          router.push(targetRoute)
         }, 1500)
       } else {
         setError(data.error || "رقم الحساب غير صحيح")

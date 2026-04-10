@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
 import { ensureStudentAccess, ensureTeacherScope, isTeacherRole, requireRoles } from "@/lib/auth/guards"
 import { getPlanSessionContent, resolvePlanTotalDays } from "@/lib/quran-data"
@@ -15,7 +15,7 @@ export async function POST(request: Request) {
     }
 
     const { session } = auth
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const activeSemester = await getOrCreateActiveSemester(supabase)
     const {
       student_id,

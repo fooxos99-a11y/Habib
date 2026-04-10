@@ -1,10 +1,10 @@
-import { createClient } from "@/lib/supabase-server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
 import { requireRoles } from "@/lib/auth/guards"
 
 export async function GET() {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     const { data: categories, error } = await supabase
       .from("categories")
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
       return auth.response
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { name } = await request.json()
 
     const { data, error } = await supabase
@@ -61,7 +61,7 @@ export async function PUT(request: Request) {
       return auth.response
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { id, name } = await request.json()
 
     const { data, error } = await supabase
@@ -90,7 +90,7 @@ export async function DELETE(request: Request) {
       return auth.response
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { searchParams } = new URL(request.url)
     const id = searchParams.get("id")
 

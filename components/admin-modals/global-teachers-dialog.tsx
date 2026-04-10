@@ -314,8 +314,8 @@ export function GlobalTeachersDialog() {
                       </div>
                       <div>
                         <h3 className="font-bold text-[#1a2332] text-sm">{teacher.name}</h3>
+                        <p className="mt-1 text-xs text-neutral-500">{(teacher.halaqah || "بدون حلقة").trim() || "بدون حلقة"}</p>
                         <div className="flex items-center gap-2 mt-1 text-xs text-neutral-500">
-                          <span className="bg-[#1a2332]/5 px-2 py-0.5 rounded-full">{teacher.halaqah}</span>
                           <span className="bg-[#3453a7]/10 text-[#3453a7] px-2 py-0.5 rounded-full">
                             {teacher.role === 'deputy_teacher' ? 'نائب معلم' : 'معلم'}
                           </span>

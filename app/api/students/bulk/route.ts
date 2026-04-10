@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
 import { isTeacherRole, requireRoles } from "@/lib/auth/guards"
 import { normalizeGuardianPhoneForStorage } from "@/lib/phone-number"
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
     }
 
     const { session } = auth
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const body = await request.json()
     const students = Array.isArray(body.students) ? (body.students as BulkStudentInput[]) : []
     const requestedCircle = String(body.circle_name || "").trim()

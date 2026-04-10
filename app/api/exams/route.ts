@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { getRequestSession, isPrivilegedRole, requireRoles } from "@/lib/auth/guards"
 import { calculateExamScore, getExamSettings } from "@/lib/exam-settings"
 import { getExamPortionSettings, normalizeExamPortionSettings } from "@/lib/exam-portion-settings"
@@ -266,7 +266,7 @@ export async function GET(request: Request) {
 			return NextResponse.json({ error: "ليس لديك صلاحية الوصول" }, { status: 403 })
 		}
 
-		const supabase = await createClient()
+		const supabase = createAdminClient()
 		const activeSemester = await getOrCreateActiveSemester(supabase)
 		const { searchParams } = new URL(request.url)
 		let circleName = String(searchParams.get("circle") || "").trim()
@@ -345,7 +345,7 @@ export async function POST(request: Request) {
 		}
 
 		const { session } = auth
-		const supabase = await createClient()
+		const supabase = createAdminClient()
 		const activeSemester = await getOrCreateActiveSemester(supabase)
 		const body = await request.json()
 		const portionSettings = await getExamPortionSettings()

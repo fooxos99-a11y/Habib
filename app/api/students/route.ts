@@ -1,4 +1,3 @@
-import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
 import {
@@ -186,7 +185,7 @@ export async function POST(request: Request) {
     }
 
     const { session } = auth
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const body = await request.json()
     const {
       name,
@@ -309,7 +308,7 @@ export async function DELETE(request: Request) {
     }
 
     const { session } = auth
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { searchParams } = new URL(request.url)
     const studentId = searchParams.get("id")
 
@@ -338,7 +337,7 @@ export async function DELETE(request: Request) {
 
 export async function GET(request: Request) {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const session = await getRequestSession(request)
     const { searchParams } = new URL(request.url)
     const circleName = searchParams.get("circle")
@@ -461,7 +460,7 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "يجب تسجيل الدخول أولاً" }, { status: 401 })
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const adminSupabase = createAdminClient()
     const body = await request.json()
     const {

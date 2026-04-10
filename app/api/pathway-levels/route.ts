@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { requireRoles } from "@/lib/auth/guards"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 
 function getErrorMessage(error: unknown) {
   if (!error) return "حدث خطأ غير معروف"
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "بيانات المستوى غير مكتملة" }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { data: level, error: levelError } = await supabase
       .from("pathway_levels")
       .insert({

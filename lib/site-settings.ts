@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import {
 	DEFAULT_TEACHER_ATTENDANCE_DELAY_MINUTES,
 	TEACHER_ATTENDANCE_DELAY_SETTING_ID,
@@ -6,7 +6,7 @@ import {
 
 export async function getSiteSetting<T>(id: string, fallback: T): Promise<T> {
 	try {
-		const supabase = await createClient()
+		const supabase = createAdminClient()
 		const { data, error } = await supabase.from("site_settings").select("value").eq("id", id).maybeSingle()
 
 		if (error || !data?.value) {
@@ -20,7 +20,7 @@ export async function getSiteSetting<T>(id: string, fallback: T): Promise<T> {
 }
 
 export async function upsertSiteSetting<T>(id: string, value: T) {
-	const supabase = await createClient()
+	const supabase = createAdminClient()
 	return supabase.from("site_settings").upsert({ id, value }, { onConflict: "id" }).select("id, value").single()
 }
 

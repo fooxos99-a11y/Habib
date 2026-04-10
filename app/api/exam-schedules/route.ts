@@ -7,7 +7,7 @@ import { getJuzNumberForPortion, isValidExamPortionNumber, normalizeExamPortionT
 import { getCompletedMemorizationDays } from "@/lib/plan-progress"
 import { insertNotificationsAndSendPush } from "@/lib/push-notifications"
 import { getOrCreateActiveSemester, isMissingSemestersTable, isNoActiveSemesterError } from "@/lib/semesters"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { buildExamAppNotificationMessage, fillExamWhatsAppTemplate, getExamWhatsAppTemplates } from "@/lib/whatsapp-notification-templates"
 import { enqueueWhatsAppMessage } from "@/lib/whatsapp-queue"
 
@@ -144,7 +144,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "ليس لديك صلاحية الوصول" }, { status: 403 })
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const activeSemester = await getOrCreateActiveSemester(supabase)
     const { searchParams } = new URL(request.url)
     let studentId = String(searchParams.get("student_id") || "").trim()
@@ -234,7 +234,7 @@ export async function POST(request: Request) {
     }
 
     const { session } = auth
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const activeSemester = await getOrCreateActiveSemester(supabase)
     const portionSettings = await getExamPortionSettings()
     const body = await request.json()
@@ -391,7 +391,7 @@ export async function PATCH(request: Request) {
     }
 
     const { session } = auth
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const body = await request.json()
     const scheduleId = String(body.id || "").trim()
     const portionSettings = await getExamPortionSettings()
@@ -540,7 +540,7 @@ export async function DELETE(request: Request) {
     }
 
     const { session } = auth
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { searchParams } = new URL(request.url)
     const scheduleId = String(searchParams.get("id") || "").trim()
 

@@ -1,4 +1,5 @@
-import { createClient } from "@/lib/supabase/server"
+import { requireRoles } from "@/lib/auth/guards"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
 
 function getErrorMessage(error: unknown) {
@@ -21,7 +22,7 @@ export const revalidate = 30
 // GET all circles
 export async function GET() {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     const { data: circles, error: circlesError } = await supabase
       .from("circles")
@@ -68,6 +69,11 @@ export async function GET() {
 // POST - Add a new circle
 export async function POST(request: Request) {
   try {
+    const auth = await requireRoles(request, ["admin", "supervisor"])
+    if ("response" in auth) {
+      return auth.response
+    }
+
     const { name } = await request.json()
     const normalizedName = normalizeCircleName(name)
 
@@ -75,7 +81,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "اسم الحلقة مطلوب" }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     const { data, error } = await supabase.from("circles").insert({ name: normalizedName }).select().single()
 
@@ -95,6 +101,11 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
+    const auth = await requireRoles(request, ["admin", "supervisor"])
+    if ("response" in auth) {
+      return auth.response
+    }
+
     const body = await request.json()
     const currentName = normalizeCircleName(body.current_name)
     const nextName = normalizeCircleName(body.new_name)
@@ -107,7 +118,7 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ success: true })
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     const { data: existingCircle, error: existingCircleError } = await supabase
       .from("circles")
@@ -159,6 +170,11 @@ export async function PATCH(request: Request) {
 // DELETE - Remove a circle
 export async function DELETE(request: Request) {
   try {
+    const auth = await requireRoles(request, ["admin", "supervisor"])
+    if ("response" in auth) {
+      return auth.response
+    }
+
     const { searchParams } = new URL(request.url)
     const circleName = normalizeCircleName(searchParams.get("name"))
 
@@ -166,7 +182,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "اسم الحلقة مطلوب" }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     // Delete all students in this circle
     const { error: studentsError } = await supabase.from("students").delete().eq("halaqah", circleName)

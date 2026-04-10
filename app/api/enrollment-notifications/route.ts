@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { requireRoles } from "@/lib/auth/guards"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { enqueueWhatsAppMessage } from "@/lib/whatsapp-queue"
 
 function getTodayDate() {
@@ -22,7 +22,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "نص الرسالة مطلوب" }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const result = await enqueueWhatsAppMessage(supabase, {
       phoneNumber,
       message,

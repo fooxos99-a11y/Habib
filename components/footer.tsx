@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Facebook, Twitter, Instagram, Phone, Mail, MapPin } from "lucide-react"
+import { Phone, Mail, MapPin } from "lucide-react"
 
 export function Footer() {
   return (
@@ -9,7 +9,7 @@ export function Footer() {
           <div className="col-span-2 md:col-span-1">
             <h3 className="text-2xl font-bold mb-6 text-[#3453a7]">من نحن</h3>
             <p className="text-base leading-relaxed text-[#1f2937]">
-              مجمع حلقات الحبيَّب لتحفيظ القرآن الكريم، يسعى لتقديم بيئة تربوية متميزة تجمع بين الأصالة والمعاصرة.
+              مجمع الملك خالد لتحفيظ القرآن الكريم، يسعى لتقديم بيئة تربوية متميزة تجمع بين الأصالة والمعاصرة.
               نهدف إلى تخريج جيل قرآني متقن لكتاب الله، ملتزم بتعاليمه، قادر على خدمة دينه ومجتمعه. مع التركيز على
               الجودة والإتقان والمتابعة المستمرة لكل طالب.
             </p>
@@ -56,29 +56,9 @@ export function Footer() {
               </li>
               <li className="flex items-center gap-3 text-[#1f2937]">
                 <MapPin className="w-5 h-5 text-[#3453a7]" />
-                <span>السعودية، بريدة، الهلال</span>
+                <span>السعودية، بريدة</span>
               </li>
             </ul>
-            <div className="flex gap-4 mt-6">
-              <Link
-                href="#"
-                className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-[#3453a7]/35 text-[#3453a7] transition-all hover:-translate-y-0.5 hover:border-[#3453a7] hover:bg-[#3453a7] hover:text-white"
-              >
-                <Instagram className="w-5 h-5" />
-              </Link>
-              <Link
-                href="#"
-                className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-[#3453a7]/35 text-[#3453a7] transition-all hover:-translate-y-0.5 hover:border-[#3453a7] hover:bg-[#3453a7] hover:text-white"
-              >
-                <Twitter className="w-5 h-5" />
-              </Link>
-              <Link
-                href="#"
-                className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-[#3453a7]/35 text-[#3453a7] transition-all hover:-translate-y-0.5 hover:border-[#3453a7] hover:bg-[#3453a7] hover:text-white"
-              >
-                <Facebook className="w-5 h-5" />
-              </Link>
-            </div>
           </div>
         </div>
       </div>

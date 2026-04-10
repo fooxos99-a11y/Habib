@@ -15,6 +15,7 @@ const { createClient } = require("@supabase/supabase-js")
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 const QUEUE_TABLE = process.env.WHATSAPP_QUEUE_TABLE || "whatsapp_queue"
+const HISTORY_TABLE = process.env.WHATSAPP_HISTORY_TABLE || "whatsapp_messages"
 const AUTH_DIR = process.env.WHATSAPP_AUTH_DIR || path.join(__dirname, ".wwebjs_auth")
 const QR_IMAGE_PATH = process.env.WHATSAPP_QR_IMAGE_PATH || path.join(__dirname, "current-qr.png")
 const STATUS_FILE_PATH = process.env.WHATSAPP_STATUS_FILE_PATH || path.join(__dirname, "status.json")
@@ -31,6 +32,7 @@ const BURST_PAUSE_MAX_MS = Number(process.env.WHATSAPP_BURST_PAUSE_MAX_MS || 600
 const INCOMING_SYNC_INTERVAL_MS = Number(process.env.WHATSAPP_INCOMING_SYNC_INTERVAL_MS || 30000)
 const INCOMING_SYNC_CHAT_LIMIT = Number(process.env.WHATSAPP_INCOMING_SYNC_CHAT_LIMIT || 30)
 const INCOMING_SYNC_MESSAGE_LIMIT = Number(process.env.WHATSAPP_INCOMING_SYNC_MESSAGE_LIMIT || 8)
+const QUEUE_POLL_INTERVAL_MS = Number(process.env.WHATSAPP_QUEUE_POLL_INTERVAL_MS || 5000)
 const IS_LINUX = process.platform === "linux"
 const HEARTBEAT_INTERVAL_MS = Number(process.env.WHATSAPP_HEARTBEAT_INTERVAL_MS || 15000)
 
@@ -429,7 +431,15 @@ async function syncIncomingRepliesFromChats() {
         continue
       }
 
-      const messages = await chat.fetchMessages({ limit: INCOMING_SYNC_MESSAGE_LIMIT })
+      let messages = []
+      try {
+        messages = await chat.fetchMessages({ limit: INCOMING_SYNC_MESSAGE_LIMIT })
+      } catch (error) {
+        const chatId = chat.id?._serialized || chat.name || "unknown-chat"
+        log(`Skipping chat ${chatId} during incoming reply sync because recent messages could not be loaded.`, error)
+        continue
+      }
+
       for (const message of messages) {
         if (!message?.fromMe) {
           await saveIncomingReply(message)
@@ -838,6 +848,18 @@ async function loadPendingMessages() {
   }
 }
 
+async function pollPendingMessages() {
+  if (!isWhatsappReady) {
+    return
+  }
+
+  try {
+    await loadPendingMessages()
+  } catch (error) {
+    log("Failed to poll pending WhatsApp messages.", error)
+  }
+}
+
 async function skipPendingMessagesAfterReconnect() {
   const { data, error } = await supabase
     .from(QUEUE_TABLE)
@@ -998,6 +1020,7 @@ async function bootstrap() {
     try {
       await skipPendingMessagesAfterReconnect()
       await syncIncomingRepliesFromChats()
+      await loadPendingMessages()
       await processQueue()
     } catch (error) {
       log("Failed to finalize pending messages after WhatsApp became ready.", error)
@@ -1050,6 +1073,10 @@ async function bootstrap() {
   setInterval(() => {
     void syncIncomingRepliesFromChats()
   }, INCOMING_SYNC_INTERVAL_MS).unref()
+
+  setInterval(() => {
+    void pollPendingMessages()
+  }, QUEUE_POLL_INTERVAL_MS).unref()
 
   subscribeToQueueInserts()
 

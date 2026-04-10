@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import {
 	Dialog,
@@ -49,19 +48,21 @@ export function GlobalRemoveStudentDialog() {
 
 	const fetchData = async () => {
 		try {
-			const supabase = createClient()
 			const [circlesRes, studentsRes] = await Promise.all([
-				supabase.from("circles").select("id, name").order("created_at", { ascending: false }),
-				supabase.from("students").select("id, name, halaqah"),
+				fetch("/api/circles", { cache: "no-store" }),
+				fetch("/api/students", { cache: "no-store" }),
 			])
 
-			if (!circlesRes.error && circlesRes.data) {
-				setCircles(circlesRes.data)
+			const circlesData = await circlesRes.json()
+			const studentsData = await studentsRes.json()
+
+			if (circlesRes.ok && circlesData.circles) {
+				setCircles(circlesData.circles)
 			}
 
-			if (!studentsRes.error && studentsRes.data) {
+			if (studentsRes.ok && studentsData.students) {
 				const grouped: Record<string, Student[]> = {}
-				studentsRes.data.forEach((student) => {
+				studentsData.students.forEach((student: Student) => {
 					const circleName = getStudentCircleName(student)
 					if (!grouped[circleName]) {
 						grouped[circleName] = []

@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
 import { isPrivilegedRole, requireRoles } from "@/lib/auth/guards"
 import { normalizeGuardianPhoneForStorage } from "@/lib/phone-number"
@@ -49,7 +49,7 @@ export async function GET(request: Request) {
     }
 
     const { session } = auth
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { searchParams } = new URL(request.url)
     const accountNumber = searchParams.get("account_number")
 
@@ -157,7 +157,7 @@ export async function POST(request: Request) {
       return auth.response
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const body = await request.json()
     const { name, id_number, account_number, halaqah, role, phone_number } = body
 
@@ -234,7 +234,7 @@ export async function DELETE(request: Request) {
       return auth.response
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { searchParams } = new URL(request.url)
     const teacherId = searchParams.get("id")
 
@@ -263,7 +263,7 @@ export async function PATCH(request: Request) {
       return auth.response
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const body = await request.json()
     const { id, name, phone_number, id_number, account_number, halaqah, role } = body
 
